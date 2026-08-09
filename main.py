@@ -37,7 +37,7 @@ ICON_PATH = MODULES_DIR / "assets" / "icon.png"
 sys.path.insert(0, str(MODULES_DIR))
 
 from modules.window_utils import apply_dark_titlebar_tk, set_window_icon_tk
-from modules.audio_capture import AudioSource, list_audio_sources
+from modules.audio_capture import AudioSource, AudioCaptureServer, list_audio_sources
 from modules.audio_source_config import save_selected_source, load_selected_source
 
 REPO_URL = "https://github.com/Helvior-dev/audio-vis"
@@ -131,20 +131,21 @@ MODULES = [
     ("Spectrum",            "spectrum.py",          "spectrum"),
     ("Stereometer",       "stereometer.py",       "dots"),
     ("Spectrum Analyzer", "spectrum_analyzer.py", "spectrum_dense"),
+    ("Spectrogram",       "spectrogram.py",       "spectrum_dense"),
 ]
 
-# ---------------------------------------------------------------------
-# palette
-# ---------------------------------------------------------------------
-BG            = "#0b0b0d"
-CARD_BG       = "#17171b"
-CARD_BG_HOVER = "#1f1f25"
-CARD_BORDER   = "#26262c"
-TEXT_PRIMARY  = "#e9e9ee"
-TEXT_MUTED    = "#6f6f79"
-ACCENT        = "#3ddc84"   # running-state dot
-DOT_IDLE      = "#3a3a42"
-ICON_COLOR    = "#9b9ba6"
+from modules.config import cfg
+
+BG            = cfg.get_color("bg")
+CARD_BG       = cfg.get_color("card_bg")
+CARD_BG_HOVER = cfg.get_color("card_bg_hover")
+CARD_BORDER   = cfg.get_color("card_border")
+TEXT_PRIMARY  = cfg.get_color("text_primary")
+TEXT_MUTED    = cfg.get_color("text_muted")
+ACCENT        = cfg.get_color("accent")
+DOT_IDLE      = cfg.get_color("dot_idle")
+ICON_COLOR    = cfg.get_color("icon_color")
+
 
 
 def round_rect(canvas: tk.Canvas, x0, y0, x1, y1, radius=12, **kwargs):
@@ -479,6 +480,9 @@ class Launcher:
 
         self.source_selector = SourceSelectorButton(header)
         self.source_selector.pack(anchor="w", pady=(10, 0))
+        
+        self.audio_server = AudioCaptureServer(chunk_size=1024, source=self.source_selector.current)
+        self.source_selector.on_change = lambda src: self.audio_server.reopen(src)
 
         divider = tk.Frame(root, bg=CARD_BORDER, height=1)
         divider.pack(fill="x", padx=26, pady=(14, 4))
@@ -486,10 +490,16 @@ class Launcher:
         body = tk.Frame(root, bg=BG)
         body.pack(padx=22, pady=(10, 22))
 
+        self._init_modules()
+
+    def _init_modules(self):
         # track running subprocess per module so we can kill it on toggle
         self.processes: dict[str, subprocess.Popen | None] = {}
         self.buttons: dict[str, ModuleButton] = {}
         self._scripts: dict[str, str] = {}
+
+        # The body frame was packed in __init__
+        body = self.root.pack_slaves()[2] # header, divider, body
 
         for name, script, icon in MODULES:
             self.processes[name] = None
@@ -498,10 +508,10 @@ class Launcher:
             btn.pack(pady=4)
             self.buttons[name] = btn
 
-        footer_divider = tk.Frame(root, bg=CARD_BORDER, height=1)
+        footer_divider = tk.Frame(self.root, bg=CARD_BORDER, height=1)
         footer_divider.pack(fill="x", padx=26, pady=(0, 8))
 
-        footer = GitHubFooter(root, REPO_URL)
+        footer = GitHubFooter(self.root, REPO_URL)
         footer.pack(anchor="w", padx=26, pady=(0, 16))
 
         self.root.protocol("WM_DELETE_WINDOW", self.on_close)
@@ -544,6 +554,8 @@ class Launcher:
         for proc in self.processes.values():
             if proc is not None and proc.poll() is None:
                 proc.terminate()
+        if hasattr(self, 'audio_server'):
+            self.audio_server.close()
         self.root.destroy()
 
 
@@ -563,6 +575,13 @@ def run_module(module_stem: str):
 
 
 if __name__ == "__main__":
+    if sys.platform == "win32":
+        import ctypes
+        try:
+            ctypes.windll.shcore.SetProcessDpiAwareness(2)
+        except Exception:
+            pass
+
     if len(sys.argv) >= 3 and sys.argv[1] == "--module":
         run_module(sys.argv[2])
     else:

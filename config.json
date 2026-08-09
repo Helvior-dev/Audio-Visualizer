@@ -1,0 +1,16 @@
+{
+    "theme": {
+        "bg": "#0b0b0d",
+        "card_bg": "#17171b",
+        "card_bg_hover": "#1f1f25",
+        "card_border": "#26262c",
+        "text_primary": "#e9e9ee",
+        "text_muted": "#6f6f79",
+        "accent": "#3ddc84",
+        "dot_idle": "#3a3a42",
+        "icon_color": "#9b9ba6",
+        "visualizer_bg": "#0b0b0d",
+        "visualizer_accent": "#3ddc84",
+        "visualizer_secondary": "#758295"
+    }
+}

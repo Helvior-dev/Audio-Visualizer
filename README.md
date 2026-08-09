@@ -15,6 +15,7 @@ A real-time, GPU-accelerated audio visualization suite for Windows written in Py
 - **GPU-Accelerated Rendering:** Smooth, high-FPS visuals built on PyOpenGL and GLFW.
 - **Dark Windows Integration:** Custom dark title bars matching the UI design.
 - **Modular Control Launcher:** A lightweight launcher GUI to toggle individual meters on and off.
+- **Interactive Help Overlays:** Click the `?` icon in any module for quick visual explanations of what the meters represent.
 
 ---
 
@@ -24,8 +25,8 @@ A real-time, GPU-accelerated audio visualization suite for Windows written in Py
 | :--- | :--- |
 | **Loudness Meter** | Momentary (M), Short-Term (S), Integrated (INT), LRA, Peak levels, and stereo L/R meters adhering to EBU R128 / ITU-R BS.1770 concepts. |
 | **Oscilloscope** | Real-time waveform display featuring correlation-based triggering for a stable trace even with complex musical content. |
-| **Spectrum** | Fast Fourier Transform (FFT) spectrum analyzer with logarithmic frequency scaling and temporal smoothing. |
 | **Spectrum Analyzer** | Detailed spectrum view with frequency markers, musical note detection, and interactive hover inspection. |
+| **Spectrogram** | Fast waterfall display of frequencies over time using a perceptually uniform Magma colormap. |
 | **Vectorscope / Stereometer** | Mid/Side phase display, Lissajous stereo field visualizer, and correlation meters. |
 
 ---

@@ -43,6 +43,7 @@ from pathlib import Path
 import glfw
 import numpy as np
 from OpenGL.GL import *
+import threading
 
 sys.path.insert(0, str(Path(__file__).parent))
 from audio_capture import AudioCapture
@@ -533,7 +534,6 @@ class LoudnessWindow:
 
     def _on_resize(self, window, width, height):
         self.width, self.height = width, height
-        glViewport(0, 0, width, height)
 
     def _on_cursor_move(self, window, xpos, ypos):
         self.mouse_x, self.mouse_y = xpos, ypos
@@ -665,15 +665,9 @@ class LoudnessWindow:
         self._draw_circle_window(self.help_icon_cx, self.help_icon_cy, self.help_icon_r, icon_color, alpha=0.9)
         self._text("?", self.help_icon_cx, self.help_icon_cy, 1.1, icon_color, align="center", valign="middle")
 
-    def _draw_help_column(self, lines, x_left, start_y, line_h):
-        muted = (0.68, 0.68, 0.73)
-        heading = (0.9, 0.9, 0.95)
-        for i, line in enumerate(lines):
-            is_heading = i == 0
-            color = heading if is_heading else muted
-            scale = 1.15 if is_heading else 0.85
-            if line:
-                self._text(line, x_left, start_y - i * line_h, scale, color, align="left", valign="top")
+    def _aspect_x(self, x: float) -> float:
+        aspect = max(1.0, self.width / max(1.0, self.height))
+        return x / aspect
 
     def _draw_help_overlay(self):
         self._draw_solid_quad(-1.0, -1.0, 1.0, 1.0, (0.0, 0.0, 0.0), alpha=0.72)
@@ -682,14 +676,25 @@ class LoudnessWindow:
         title_y = 0.72
         self._text(HELP_TITLE, 0.0, title_y, 1.6, (0.92, 0.92, 0.97), align="center", valign="top")
 
-        col_top = title_y - 0.22
-        line_h = 0.075
-        gap = 0.06
-        col_left_x = -0.88
-        col_right_x = gap
-
-        self._draw_help_column(HELP_COLUMN_LEFT, col_left_x, col_top, line_h)
-        self._draw_help_column(HELP_COLUMN_RIGHT, col_right_x, col_top, line_h)
+        col_top = title_y - 0.15
+        line_h = 0.065
+        
+        lines = [
+            ("LOUDNESS (LUFS)", True),
+            ("Shows how loud the audio sounds overall.", False),
+            ("M: Momentary  |  S: Short-Term  |  INT: Integrated", False),
+            ("LRA: Loudness Range  |  PK: Peak", False),
+            ("", False),
+            ("LEVEL L/R", True),
+            ("A simple volume meter for the left and right speakers.", False),
+            ("The thin white marker is the peak hold.", False),
+        ]
+        
+        for i, (line, is_heading) in enumerate(lines):
+            if line:
+                color = (0.9, 0.9, 0.95) if is_heading else (0.68, 0.68, 0.73)
+                scale = 1.15 if is_heading else 0.85
+                self._text(line, 0.0, col_top - i * line_h, scale, color, align="center", valign="top")
 
         self._text(HELP_FOOTER, 0.0, -0.78, 0.85, (0.55, 0.55, 0.6), align="center", valign="top")
 
@@ -781,7 +786,10 @@ class LoudnessWindow:
             self._text(str(db_val), x, axis_y - 0.02, 1.3, muted, align="center", valign="top")
 
     def render_frame(self):
-        glClearColor(0.02, 0.02, 0.025, 1.0)
+        from config import cfg
+        glViewport(0, 0, self.width, self.height)
+        bg_color = cfg.get_color_rgb("visualizer_bg")
+        glClearColor(*bg_color, 1.0)
         glClear(GL_COLOR_BUFFER_BIT)
 
         gap = 0.03
@@ -795,19 +803,37 @@ class LoudnessWindow:
 
     def run(self):
         try:
-            # draw + present one real frame before revealing the
-            # window (see the VISIBLE hint above) so nothing white
-            # or half-initialized is ever shown
             self._update_audio()
             self.render_frame()
             glfw.swap_buffers(self.window)
             glfw.show_window(self.window)
 
+            glfw.make_context_current(None)
+            self.running = True
+
+            def render_thread():
+                glfw.make_context_current(self.window)
+                while self.running:
+                    now = glfw.get_time()
+                    if now - getattr(self, "_last_config_check", 0) > 1.0:
+                        self._last_config_check = now
+                        try:
+                            from config import cfg
+                            cfg.reload_if_changed()
+                        except:
+                            pass
+                    self._update_audio()
+                    self.render_frame()
+                    glfw.swap_buffers(self.window)
+
+            t = threading.Thread(target=render_thread)
+            t.start()
+
             while not glfw.window_should_close(self.window):
-                self._update_audio()
-                self.render_frame()
-                glfw.swap_buffers(self.window)
-                glfw.poll_events()
+                glfw.wait_events_timeout(0.016)
+
+            self.running = False
+            t.join()
         finally:
             self.audio.close()
             glfw.terminate()

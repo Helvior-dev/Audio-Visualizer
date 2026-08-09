@@ -16,7 +16,7 @@ from pathlib import Path
 import glfw
 import numpy as np
 from OpenGL.GL import *
-
+import threading
 sys.path.insert(0, str(Path(__file__).parent))
 from audio_capture import AudioCapture
 from window_utils import apply_dark_titlebar, set_window_icon
@@ -298,7 +298,6 @@ class SpectrumAnalyzerWindow:
 
     def _on_resize(self, window, width, height):
         self.width, self.height = width, height
-        glViewport(0, 0, width, height)
 
     def _on_cursor_move(self, window, xpos, ypos):
         self.mouse_x, self.mouse_y = xpos, ypos
@@ -590,7 +589,10 @@ class SpectrumAnalyzerWindow:
                         color=(0.55, 0.55, 0.6), align="center")
 
     def render_frame(self):
-        glClearColor(0.0, 0.0, 0.0, 1.0)
+        from config import cfg
+        glViewport(0, 0, self.width, self.height)
+        bg_color = cfg.get_color_rgb("visualizer_bg")
+        glClearColor(*bg_color, 1.0)
         glClear(GL_COLOR_BUFFER_BIT)
 
         self._draw_gridlines()
@@ -623,19 +625,39 @@ class SpectrumAnalyzerWindow:
 
     def run(self):
         try:
-            # draw + present one real frame before revealing the
-            # window (see the VISIBLE hint above) so nothing white
-            # or half-initialized is ever shown
             self._update_audio()
             self.render_frame()
             glfw.swap_buffers(self.window)
             glfw.show_window(self.window)
 
+            glfw.make_context_current(None)
+            self.running = True
+
+            def render_thread():
+                glfw.make_context_current(self.window)
+                while self.running and not glfw.window_should_close(self.window):
+                    now = glfw.get_time()
+                    if now - getattr(self, "_last_config_check", 0) > 1.0:
+                        self._last_config_check = now
+                        try:
+                            from config import cfg
+                            cfg.reload_if_changed()
+                        except:
+                            pass
+                    from config import cfg
+                    cfg.reload_if_changed()
+                    self._update_audio()
+                    self.render_frame()
+                    glfw.swap_buffers(self.window)
+
+            t = threading.Thread(target=render_thread)
+            t.start()
+
             while not glfw.window_should_close(self.window):
-                self._update_audio()
-                self.render_frame()
-                glfw.swap_buffers(self.window)
-                glfw.poll_events()
+                glfw.wait_events_timeout(0.016)
+
+            self.running = False
+            t.join()
         finally:
             self.audio.close()
             glfw.terminate()

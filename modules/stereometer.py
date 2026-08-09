@@ -30,6 +30,7 @@ from pathlib import Path
 import glfw
 import numpy as np
 from OpenGL.GL import *
+import threading
 
 sys.path.insert(0, str(Path(__file__).parent))
 from audio_capture import AudioCapture
@@ -205,7 +206,6 @@ class VectorscopeWindow:
 
     def _on_resize(self, window, width, height):
         self.width, self.height = width, height
-        glViewport(0, 0, width, height)
 
     def _on_cursor_move(self, window, xpos, ypos):
         self.mouse_x, self.mouse_y = xpos, ypos
@@ -428,10 +428,15 @@ class VectorscopeWindow:
                 self._text_window(line, -0.88, start_y - i * line_h, scale, color, align="left")
 
     def render_frame(self):
+        from config import cfg
+        if not hasattr(self, "audio") or self.audio is None:
+            return
         if self.width <= 0 or self.height <= 0:
             return
 
-        glClearColor(0.03, 0.03, 0.04, 1.0)
+        glViewport(0, 0, self.width, self.height)
+        bg_color = cfg.get_color_rgb("visualizer_bg")
+        glClearColor(*bg_color, 1.0)
         glClear(GL_COLOR_BUFFER_BIT)
         glUseProgram(self.program)
         glBindVertexArray(self.line_vao)
@@ -498,19 +503,37 @@ class VectorscopeWindow:
 
     def run(self):
         try:
-            # draw + present one real frame before revealing the
-            # window (see the VISIBLE hint above) so nothing white
-            # or half-initialized is ever shown
             self._update_audio()
             self.render_frame()
             glfw.swap_buffers(self.window)
             glfw.show_window(self.window)
 
+            glfw.make_context_current(None)
+            self.running = True
+
+            def render_thread():
+                glfw.make_context_current(self.window)
+                while self.running:
+                    now = glfw.get_time()
+                    if now - getattr(self, "_last_config_check", 0) > 1.0:
+                        self._last_config_check = now
+                        try:
+                            from config import cfg
+                            cfg.reload_if_changed()
+                        except:
+                            pass
+                    self._update_audio()
+                    self.render_frame()
+                    glfw.swap_buffers(self.window)
+
+            t = threading.Thread(target=render_thread)
+            t.start()
+
             while not glfw.window_should_close(self.window):
-                self._update_audio()
-                self.render_frame()
-                glfw.swap_buffers(self.window)
-                glfw.poll_events()
+                glfw.wait_events_timeout(0.016)
+
+            self.running = False
+            t.join()
         finally:
             self.audio.close()
             glfw.terminate()
