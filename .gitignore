@@ -1,27 +1,77 @@
-# Python bytecode & cache
+# Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
 *$py.class
+*.pyc
+*.pyd
 
-# Virtual environments
-venv/
-.venv/
+# C extensions
+*.so
+
+# Distribution / packaging
+bin/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+*.manifest
+*.spec
+
+# Installer / Temporary files
+*.tmp
+*.log
+*.bak
+*.swp
+warn-*.txt
+xref-*.html
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/
+
+# Environments
+.env
+.venv
 env/
+venv/
 ENV/
 env.bak/
 venv.bak/
 
-# PyInstaller / Executable builds
-build/
-dist/
-*.spec
-
-# IDE & Editor settings
-.vscode/
+# IDEs, Editors & System
 .idea/
-*.swp
-*.swo
-
-# Windows system files
+.vscode/
+.gemini/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+.DS_Store
 Thumbs.db
-desktop.ini
+Desktop.ini
+
+# App data & configs (stored in %APPDATA%/Logovo-Dushnil/Audio-Visualizer)
+config.json
+*.tmp

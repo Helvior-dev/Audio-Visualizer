@@ -276,17 +276,19 @@ class TextRenderer:
                 # but this guard protects any caller that doesn't.
                 return
             size_at_reference = BASE_FONT_PX_AT_REFERENCE * pixel_scale
-            scale_h = win_h / REFERENCE_WINDOW_HEIGHT
-            # Cap the scaling relative to width so text doesn't overflow horizontally on 16:9 fullscreen
-            scale_w = win_w / (REFERENCE_WINDOW_HEIGHT * 2.0)
-            scale_factor = min(scale_h, scale_w)
+            scale_factor = win_h / REFERENCE_WINDOW_HEIGHT
             font_px = max(1, round(size_at_reference * scale_factor))
             tex, w, h = self._get_texture(text, font_px)
 
             ndc_w = (w / win_w) * 2.0
             ndc_h = (h / win_h) * 2.0
 
-            x0 = x_ndc - ndc_w / 2.0 if align == "center" else x_ndc
+            if align == "center":
+                x0 = x_ndc - ndc_w / 2.0
+            elif align == "right":
+                x0 = x_ndc - ndc_w
+            else:
+                x0 = x_ndc
             x1 = x0 + ndc_w
             if valign == "middle":
                 y1 = y_ndc + ndc_h / 2.0

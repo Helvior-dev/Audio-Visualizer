@@ -1,83 +1,80 @@
-# Audio Visualizer (MiniMeters-inspired Fan Project)
+# Audio Visualizer (Modern Pro Suite for PyQt6)
 
-A real-time, GPU-accelerated audio visualization suite for Windows written in Python. Inspired by modern audio meters like MiniMeters, this project provides a set of modular visualizers for monitoring audio playback directly from system output (WASAPI Loopback).
-
-> **Disclaimer & Project Purpose**
-> This is a non-commercial, fan-made project created for educational purposes and personal audio monitoring. 
-> It was built with the assistance of AI coding tools to experiment with Python DSP (Digital Signal Processing), PyOpenGL, and real-time audio capture.
+A high-performance, 100% GPU-accelerated audio visualization suite for Windows built with **PyQt6**, **PyOpenGL (OpenGL 3.3 Core Profile Shaders)**, **NumPy**, **SciPy**, and **PyAudioWPatch (WASAPI Loopback)**.
 
 ---
 
-## Features
+## Visualizer Modules
 
-- **System Audio Capture:** Captures native Windows audio using WASAPI Loopback (no virtual cables required).
-- **Multi-Process Architecture:** Every visualizer window runs in its own independent process. If one window is resized, restarted, or closed, the rest keep running without latency drops.
-- **GPU-Accelerated Rendering:** Smooth, high-FPS visuals built on PyOpenGL and GLFW.
-- **Dark Windows Integration:** Custom dark title bars matching the UI design.
-- **Modular Control Launcher:** A lightweight launcher GUI to toggle individual meters on and off.
-- **Interactive Help Overlays:** Click the `?` icon in any module for quick visual explanations of what the meters represent.
+1. **Waveform (History Waveform)**:
+   - Rolling audio waveform history scrolling right to left in real time.
+   - Dynamic spectral pitch coloring (Bass = Crimson/Pink, Mids = Theme Accent/Peach, Treble = Cyan/Violet).
+   - Pure GPU shader acceleration (144+ FPS locked, 0% CPU).
 
----
+2. **Oscilloscope**:
+   - High-speed vector waveform visualizer with direct GPU shader rendering.
+   - Dynamic electrical brightness and custom theme adaptation.
 
-## Modules Included
+3. **Spectrum Analyzer**:
+   - Fast, musical FFT spectrum analyzer with smooth decay and peak-hold lines.
+   - Interactive frequency note / pitch tooltip on hover.
 
-| Module | Description |
-| :--- | :--- |
-| **Loudness Meter** | Momentary (M), Short-Term (S), Integrated (INT), LRA, Peak levels, and stereo L/R meters adhering to EBU R128 / ITU-R BS.1770 concepts. |
-| **Oscilloscope** | Real-time waveform display featuring correlation-based triggering for a stable trace even with complex musical content. |
-| **Spectrum Analyzer** | Detailed spectrum view with frequency markers, musical note detection, and interactive hover inspection. |
-| **Spectrogram** | Fast waterfall display of frequencies over time using a perceptually uniform Magma colormap. |
-| **Vectorscope / Stereometer** | Mid/Side phase display, Lissajous stereo field visualizer, and correlation meters. |
+4. **Spectrogram (Waterfall)**:
+   - High-speed 2D frequency heatmap scrolling horizontally.
+   - Dynamic palette gradient anchored to the active accent theme.
 
----
+5. **Stereometer (Vectorscope)**:
+   - Mid/Side Lissajous diamond scatter plot.
+   - Real-time stereo phase correlation meter (-1.0 to +1.0).
 
-## Requirements & Tech Stack
-
-- **OS:** Windows 10 / 11 (WASAPI Loopback requirement)
-- **Language:** Python 3.10+ (Tested up to Python 3.14)
-- **Dependencies:**
-  - `PyOpenGL` & `PyOpenGL_accelerate`
-  - `glfw`
-  - `numpy`
-  - `pyaudiowpatch`
-  - `tkinter` (Standard Python library)
+6. **Loudness & Level Meter**:
+   - EBU R128 / ITU-R BS.1770-4 compliance.
+   - Momentary, Short-Term, and Integrated LUFS, Loudness Range (LRA), and True-Peak meters.
+   - Responsive layout adapting to card sizes.
 
 ---
 
-## Quick Start
+## Key Features
 
-1. **Clone the repository:**
-   ```bash
-   git clone https://github.com/Helvior-dev/audio-vis.git
-   cd audio-vis
-   ```
-
-2. **Install dependencies:**
-   ```bash
-   pip install PyOpenGL PyOpenGL_accelerate glfw numpy pyaudiowpatch
-   ```
-
-3. **Launch the app:**
-   ```bash
-   python main.py
-   ```
+- **Docking & Floating Windows**:
+  - Unified balanced 2x3 grid suite or individual standalone floating windows.
+  - One-click `↗ Undock All` / `⇲ Dock All` toggle to pop-out or restore all visualizers at once.
+- **Dynamic Suite Pause (`⏸ Pause Suite`)**:
+  - Automatically activates when modules are undocked to freeze docked background rendering (0% CPU/GPU overhead) while floating windows run actively.
+- **Custom Accent Themes**:
+  - 7 built-in presets (*Spectrum Magenta, Cyberpunk Cyan, Hot Pink, Neon Green, Default Blue, Amber Gold, Slate Blue*) + custom RGB color picker.
+- **App Configuration Storage**:
+  - Configurations and window geometries are safely stored in `%APPDATA%\Logovo-Dushnil\Audio-Visualizer\config.json`.
 
 ---
 
-## How It Works
+## Quick Start & Running
 
-- **Audio Pipeline:** `pyaudiowpatch` captures system output via WASAPI Loopback and broadcasts raw audio buffers to active modules.
-- **Isolation:** Launcher spawns each visualizer module via `subprocess`.
-- **Text & UI Rendering:** Custom bitmap text rendering pipeline optimized for raw OpenGL calls without heavy external GUI framework overhead.
+### Requirements
+- Windows 10 / Windows 11
+- Python 3.10+
+
+### Installation
+```bash
+pip install -r requirements.txt
+```
+
+### Launch
+```bash
+python main.py
+```
+or double-click `run.bat`.
 
 ---
 
-## AI & Development Note
-
-This repository was created using an iterative AI-assisted workflow. Coding assistants were used to prototype DSP algorithms, generate initial OpenGL shaders, and handle boilerplate code, while debugging, architecture design, profiling, and final refinements were done manually.
+## Building Standalone Executable (.exe)
+To compile a standalone Windows `.exe` using PyInstaller:
+```bash
+python build_executable.py
+```
+The compiled executable will be generated at `dist/AudioVisualizer/AudioVisualizer.exe`.
 
 ---
 
-## License
-
-MIT License. Feel free to fork, modify, and experiment!
+## Legacy Version
+The previous version of the codebase has been archived in the [`Old-Version/`](./Old-Version/) directory.
