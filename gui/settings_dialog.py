@@ -15,6 +15,9 @@ from core.audio_capture import (
 )
 from core.config_manager import AppConfig, save_config
 from core.audio_worker import AudioWorker
+from core.version import __version__, RELEASES_URL
+from core.updater import UpdateCheckWorker
+from .widgets.update_dialog import UpdateDialog
 
 ACCENT_PRESETS = [
     ("Spectrum Magenta", "#FF4570"),
@@ -34,9 +37,10 @@ class SettingsDialog(QDialog):
         super().__init__(parent)
         self.config = config
         self.audio_worker = audio_worker
+        self._update_worker = None
 
         self.setWindowTitle("Settings")
-        self.setFixedSize(540, 440)
+        self.setFixedSize(540, 520)
         self.setStyleSheet("""
             QDialog {
                 background-color: #14141A;
@@ -215,7 +219,7 @@ class SettingsDialog(QDialog):
         self.fps_combo = QComboBox(self)
         self.fps_combo.addItems(["30 FPS", "60 FPS", "120 FPS", "144 FPS"])
         fps_map = {30: 0, 60: 1, 120: 2, 144: 3}
-        self.fps_combo.setCurrentIndex(fps_map.get(self.config.fps_limit, 1))
+        self.fps_combo.setCurrentIndex(fps_map.get(self.config.fps_limit, 3))
         self.fps_combo.currentIndexChanged.connect(self._on_fps_changed)
         fps_layout.addWidget(self.fps_combo)
         pg_layout.addLayout(fps_layout)
@@ -232,6 +236,31 @@ class SettingsDialog(QDialog):
         pg_layout.addLayout(opac_layout)
 
         layout.addWidget(perf_group)
+
+        # -------------------------------------------------------------
+        # 4. Updates & Software
+        # -------------------------------------------------------------
+        updates_group = QGroupBox("UPDATES & SOFTWARE", self)
+        ug_layout = QVBoxLayout(updates_group)
+        ug_layout.setSpacing(6)
+
+        ver_row = QHBoxLayout()
+        ver_lbl = QLabel(f"Current version: <b style='color: #FFFFFF;'>v{__version__}</b>", self)
+        ver_row.addWidget(ver_lbl)
+        ver_row.addStretch(1)
+
+        self.check_update_btn = QPushButton("🔄 Check for Updates", self)
+        self.check_update_btn.setFixedHeight(26)
+        self.check_update_btn.clicked.connect(self._check_for_updates)
+        ver_row.addWidget(self.check_update_btn)
+
+        ug_layout.addLayout(ver_row)
+
+        self.update_status_lbl = QLabel("", self)
+        self.update_status_lbl.setStyleSheet("font-size: 10px; color: #888899;")
+        ug_layout.addWidget(self.update_status_lbl)
+
+        layout.addWidget(updates_group)
 
         layout.addStretch(1)
 
@@ -318,3 +347,36 @@ class SettingsDialog(QDialog):
         self.opac_val_lbl.setText(f"{val}%")
         save_config(self.config)
         self.config_updated.emit(self.config)
+
+    def _check_for_updates(self):
+        self.check_update_btn.setEnabled(False)
+        self.check_update_btn.setText("Checking...")
+        self.update_status_lbl.setText("Connecting to GitHub...")
+        self.update_status_lbl.setStyleSheet("font-size: 10px; color: #58A6FF;")
+
+        self._update_worker = UpdateCheckWorker(current_version=__version__, parent=self)
+        self._update_worker.update_available.connect(self._on_update_available)
+        self._update_worker.no_update.connect(self._on_no_update)
+        self._update_worker.error_occurred.connect(self._on_update_error)
+        self._update_worker.start()
+
+    def _on_update_available(self, release_info: dict):
+        self.check_update_btn.setEnabled(True)
+        self.check_update_btn.setText("🔄 Check for Updates")
+        new_tag = release_info.get("tag_name", "vNext")
+        self.update_status_lbl.setText(f"🎉 New version {new_tag} is available!")
+        self.update_status_lbl.setStyleSheet("font-size: 10px; color: #3DDC84; font-weight: bold;")
+        dlg = UpdateDialog(release_info, is_preview=False, parent=self)
+        dlg.exec()
+
+    def _on_no_update(self, release_info: dict):
+        self.check_update_btn.setEnabled(True)
+        self.check_update_btn.setText("🔄 Check for Updates")
+        self.update_status_lbl.setText(f"✓ You are using the latest version (v{__version__})")
+        self.update_status_lbl.setStyleSheet("font-size: 10px; color: #3DDC84;")
+
+    def _on_update_error(self, err_msg: str):
+        self.check_update_btn.setEnabled(True)
+        self.check_update_btn.setText("🔄 Check for Updates")
+        self.update_status_lbl.setText(f"Failed to check: {err_msg}")
+        self.update_status_lbl.setStyleSheet("font-size: 10px; color: #FF4570;")

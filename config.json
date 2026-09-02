@@ -1,16 +1,74 @@
 {
-    "theme": {
-        "bg": "#0b0b0d",
-        "card_bg": "#17171b",
-        "card_bg_hover": "#1f1f25",
-        "card_border": "#26262c",
-        "text_primary": "#e9e9ee",
-        "text_muted": "#6f6f79",
-        "accent": "#3ddc84",
-        "dot_idle": "#3a3a42",
-        "icon_color": "#9b9ba6",
-        "visualizer_bg": "#0b0b0d",
-        "visualizer_accent": "#3ddc84",
-        "visualizer_secondary": "#758295"
+  "audio_source_kind": "loopback",
+  "audio_source_device_index": null,
+  "audio_source_name": "Default system audio",
+  "fps_limit": 144,
+  "always_on_top": false,
+  "window_opacity": 1.0,
+  "active_modules": {
+    "waveform": true,
+    "oscilloscope": true,
+    "vectorscope": true,
+    "spectrum": true,
+    "spectrogram": true,
+    "loudness": true
+  },
+  "layout_mode": "docked_grid",
+  "floating_modules": {
+    "loudness": false,
+    "oscilloscope": false,
+    "spectrum": false,
+    "spectrogram": false,
+    "vectorscope": false,
+    "waveform": false
+  },
+  "window_geometry": {
+    "main": {
+      "x": 458,
+      "y": 187,
+      "width": 1088,
+      "height": 456
+    },
+    "loudness": {
+      "x": 775,
+      "y": 301,
+      "width": 560,
+      "height": 320
+    },
+    "oscilloscope": {
+      "x": 864,
+      "y": 216,
+      "width": 701,
+      "height": 320
+    },
+    "spectrum": {
+      "x": 549,
+      "y": 346,
+      "width": 835,
+      "height": 320
+    },
+    "spectrogram": {
+      "x": 0,
+      "y": 23,
+      "width": 1920,
+      "height": 1009
+    },
+    "vectorscope": {
+      "x": 1203,
+      "y": 75,
+      "width": 652,
+      "height": 471
+    },
+    "waveform": {
+      "x": 95,
+      "y": 373,
+      "width": 1342,
+      "height": 421
     }
+  },
+  "accent_color": "#FF4570",
+  "spectrum_smoothing": 0.95,
+  "spectrum_peak_hold_sec": 0.12,
+  "oscilloscope_samples": 2048,
+  "vectorscope_points": 1024
 }

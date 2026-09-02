@@ -28,18 +28,18 @@ class AppConfig:
     audio_source_device_index: int | None = None
     audio_source_name: str = "Default system audio"
     
-    fps_limit: int = 60
+    fps_limit: int = 144
     always_on_top: bool = False
     window_opacity: float = 1.0
     
     # Active modules (whether each widget is visible/running)
     active_modules: Dict[str, bool] = field(default_factory=lambda: {
-        "loudness": True,
         "waveform": True,
         "oscilloscope": True,
+        "vectorscope": True,
         "spectrum": True,
         "spectrogram": True,
-        "vectorscope": True
+        "loudness": True
     })
     
     # Layout mode

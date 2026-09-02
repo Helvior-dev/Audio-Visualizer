@@ -1,65 +1,55 @@
-# Audio Visualizer (Modern Pro Suite for PyQt6)
+# Audio Visualizer (v2.1.0)
 
-A high-performance, 100% GPU-accelerated audio visualization suite for Windows built with **PyQt6**, **PyOpenGL (OpenGL 3.3 Core Profile Shaders)**, **NumPy**, **SciPy**, and **PyAudioWPatch (WASAPI Loopback)**.
+Real-time audio visualization suite for Windows. Captures audio directly from any output (headphones, speakers) via WASAPI Loopback with zero latency and renders meters and plots on GPU shaders at 144+ FPS.
 
----
+Stack: Python 3.10+, PyQt6, PyOpenGL (OpenGL 3.3 Core Profile shaders), NumPy, SciPy, PyAudioWPatch.
 
-## Visualizer Modules
-
-1. **Waveform (History Waveform)**:
-   - Rolling audio waveform history scrolling right to left in real time.
-   - Dynamic spectral pitch coloring (Bass = Crimson/Pink, Mids = Theme Accent/Peach, Treble = Cyan/Violet).
-   - Pure GPU shader acceleration (144+ FPS locked, 0% CPU).
-
-2. **Oscilloscope**:
-   - High-speed vector waveform visualizer with direct GPU shader rendering.
-   - Dynamic electrical brightness and custom theme adaptation.
-
-3. **Spectrum Analyzer**:
-   - Fast, musical FFT spectrum analyzer with smooth decay and peak-hold lines.
-   - Interactive frequency note / pitch tooltip on hover.
-
-4. **Spectrogram (Waterfall)**:
-   - High-speed 2D frequency heatmap scrolling horizontally.
-   - Dynamic palette gradient anchored to the active accent theme.
-
-5. **Stereometer (Vectorscope)**:
-   - Mid/Side Lissajous diamond scatter plot.
-   - Real-time stereo phase correlation meter (-1.0 to +1.0).
-
-6. **Loudness & Level Meter**:
-   - EBU R128 / ITU-R BS.1770-4 compliance.
-   - Momentary, Short-Term, and Integrated LUFS, Loudness Range (LRA), and True-Peak meters.
-   - Responsive layout adapting to card sizes.
+Config location: `%APPDATA%\Logovo-Dushnil\Audio-Visualizer\config.json`
 
 ---
 
-## Key Features
+## Modules
 
-- **Docking & Floating Windows**:
-  - Unified balanced 2x3 grid suite or individual standalone floating windows.
-  - One-click `↗ Undock All` / `⇲ Dock All` toggle to pop-out or restore all visualizers at once.
-- **Dynamic Suite Pause (`⏸ Pause Suite`)**:
-  - Automatically activates when modules are undocked to freeze docked background rendering (0% CPU/GPU overhead) while floating windows run actively.
-- **Custom Accent Themes**:
-  - 7 built-in presets (*Spectrum Magenta, Cyberpunk Cyan, Hot Pink, Neon Green, Default Blue, Amber Gold, Slate Blue*) + custom RGB color picker.
-- **App Configuration Storage**:
-  - Configurations and window geometries are safely stored in `%APPDATA%\Logovo-Dushnil\Audio-Visualizer\config.json`.
+The suite consists of 6 visualizer modules organized in a balanced 2x3 grid:
+
+| Top Row | Bottom Row |
+|---|---|
+| **Waveform** — Dynamic rolling waveform history with pitch-based spectral coloring (bass = crimson, mids = theme accent, treble = cyan). Rendered via GPU shaders. | **Spectrum Analyzer** — Logarithmic FFT spectrum with smooth decay, peak-hold lines, and hover frequency/note tooltips. |
+| **Oscilloscope** — Vector phase oscilloscope with auto-triggering and neon glow. | **Spectrogram** — Fast 2D frequency-over-time heatmap with accent-aware gradients. |
+| **Stereometer** — Mid/Side Lissajous diamond scatter plot and stereo phase correlation meter (-1.0 to +1.0). | **Loudness Meter** — EBU R128 compliance meters: Momentary, Short-Term, Integrated LUFS, LRA, and True Peak. |
 
 ---
 
-## Quick Start & Running
+## Features
+
+- **Docking & Floating Windows**: Run as a unified 2x3 grid or pop out any module into a borderless floating window. Use `↗ Undock All` / `⇲ Dock All` in the top bar to detach or redock all modules in one click.
+- **Smart Pause (Pause Suite)**: When visualizers are undocked, docked background rendering is frozen to save GPU/CPU resources while floating windows continue running.
+- **Freeze State**: When paused, graphs hold their current frame instead of resetting to zero.
+- **144 FPS by default**: Default frame rate is set to 144 FPS with support for 30 / 60 / 120 / 144 FPS in settings.
+- **Accent Themes**: 7 built-in presets (Spectrum Magenta, Cyberpunk Cyan, Hot Pink, Neon Green, Default Blue, Amber Gold, Slate Blue) plus custom HEX/RGB picker. The accent applies globally across all modules.
+- **Squircle Icon**: Multi-resolution `.ico` (16x16 up to 256x256) with transparent padding, ambient drop shadow, and Lanczos super-sampling for Windows 11 desktop and taskbar.
+- **Release Updater**: Background check against GitHub releases API on launch, with in-app changelog dialog, download button, and manual "Check for Updates" in Settings.
+
+---
+
+## Shortcuts
+
+- `R` — Reset Loudness Meter statistics (Integrated LUFS, LRA, True Peak).
+
+---
+
+## Setup & Running
 
 ### Requirements
-- Windows 10 / Windows 11
+- Windows 10 / 11 (64-bit)
 - Python 3.10+
 
-### Installation
+### Install Dependencies
 ```bash
 pip install -r requirements.txt
 ```
 
-### Launch
+### Run
 ```bash
 python main.py
 ```
@@ -67,14 +57,20 @@ or double-click `run.bat`.
 
 ---
 
-## Building Standalone Executable (.exe)
-To compile a standalone Windows `.exe` using PyInstaller:
+## Building Standalone .exe
+
+To build a standalone single-folder distribution using PyInstaller:
 ```bash
 python build_executable.py
 ```
-The compiled executable will be generated at `dist/AudioVisualizer/AudioVisualizer.exe`.
+Output will be placed in `dist/AudioVisualizer/AudioVisualizer.exe`.
 
 ---
 
-## Legacy Version
-The previous version of the codebase has been archived in the [`Old-Version/`](./Old-Version/) directory.
+## Repository Structure
+
+- `core/` — Audio capture (WASAPI Loopback), DSP algorithms, config manager, version & updater.
+- `gui/` — Main window, title bar, dock containers, OpenGL visualizer widgets, settings and update dialogs.
+- `assets/` — Icons (`icon.ico`, `icon.png`, source logo).
+- `scripts/` — Utility scripts (`generate_icons.py`).
+- `Old-Version/` — Archived legacy implementation.

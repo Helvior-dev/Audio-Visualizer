@@ -20,11 +20,10 @@ def build():
     print("Building Audio Visualizer Standalone Executable...")
     print("==================================================")
 
-    # Ensure icon.ico exists
-    if not ICON_ICO.exists() and ICON_PNG.exists():
-        from PyQt6.QtGui import QImage
-        img = QImage(str(ICON_PNG))
-        img.save(str(ICON_ICO), "ICO")
+    # Ensure icon.ico exists with all 7 supersampled layers
+    if not ICON_ICO.exists():
+        from scripts.generate_icons import build_icons
+        build_icons()
 
     cmd = [
         sys.executable, "-m", "PyInstaller",

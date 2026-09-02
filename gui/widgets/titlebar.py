@@ -89,12 +89,12 @@ class TitleBar(QWidget):
         self.module_buttons = {}
         if self.is_main:
             module_defs = [
-                ("loudness", "LUFS"),
                 ("waveform", "Waveform"),
                 ("oscilloscope", "Oscilloscope"),
-                ("spectrum", "Spectrum"),
-                ("spectrogram", "Waterfall"),
                 ("vectorscope", "Stereo"),
+                ("spectrum", "Spectrum"),
+                ("spectrogram", "Spectrogram"),
+                ("loudness", "LUFS"),
             ]
             for mod_id, mod_label in module_defs:
                 btn = QPushButton(mod_label, self)

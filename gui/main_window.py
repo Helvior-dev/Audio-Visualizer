@@ -16,6 +16,7 @@ from .frameless_window import FramelessWindow
 from .widgets.titlebar import TitleBar
 from .widgets.dock_container import DockCard, FloatingModuleWindow
 from .settings_dialog import SettingsDialog
+from .widgets.update_dialog import UpdateDialog
 from .modules.loudness_widget import LoudnessWidget
 from .modules.waveform_widget import WaveformWidget
 from .modules.oscilloscope_widget import OscilloscopeWidget
@@ -24,6 +25,8 @@ from .modules.spectrogram_widget import SpectrogramWidget
 from .modules.vectorscope_widget import VectorscopeWidget
 from core.config_manager import AppConfig, save_config
 from core.audio_worker import AudioWorker
+from core.version import __version__
+from core.updater import UpdateCheckWorker
 
 
 class MainWindow(FramelessWindow):
@@ -64,6 +67,10 @@ class MainWindow(FramelessWindow):
         self.master_timer = QTimer(self)
         self.master_timer.timeout.connect(self._on_master_render_tick)
         self.master_timer.start(max(5, int(1000.0 / max(1, self.config.fps_limit))))
+
+        # 6. Automatic background update check (silent, non-intrusive)
+        self._startup_update_worker = None
+        QTimer.singleShot(2500, self._check_updates_silent)
 
     def _init_modules(self):
         title_map = {
@@ -306,6 +313,16 @@ class MainWindow(FramelessWindow):
         for w in self.modules.values():
             w.set_fps(self.config.fps_limit)
         self.update()
+
+    def _check_updates_silent(self):
+        self._startup_update_worker = UpdateCheckWorker(current_version=__version__, parent=self)
+        self._startup_update_worker.update_available.connect(self._on_update_available)
+        self._startup_update_worker.start()
+
+    def _on_update_available(self, release_info: dict):
+        if self.isVisible():
+            dlg = UpdateDialog(release_info, is_preview=False, parent=self)
+            dlg.exec()
 
     def closeEvent(self, event):
         self.master_timer.stop()

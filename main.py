@@ -17,15 +17,26 @@ else:
 
 sys.path.insert(0, str(BASE_DIR))
 
+import ctypes
+
 from core.config_manager import load_config
 from core.audio_capture import AudioSource
 from core.audio_worker import AudioWorker
 from gui.main_window import MainWindow
 
-ICON_PATH = BASE_DIR / "assets" / "icon.png"
+ICON_ICO = BASE_DIR / "assets" / "icon.ico"
+ICON_PNG = BASE_DIR / "assets" / "icon.png"
 
 
 def create_app():
+    # Set explicit AppUserModelID on Windows so taskbar uses application icon
+    if sys.platform == "win32":
+        try:
+            myappid = "LogovoDushnil.AudioVisualizer.Suite.2.0"
+            ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
+        except Exception:
+            pass
+
     # Enable High DPI scaling
     os.environ["QT_ENABLE_HIGHDPI_SCALING"] = "1"
     
@@ -33,8 +44,10 @@ def create_app():
     app.setApplicationName("Audio Visualizer")
     app.setOrganizationName("Logovo-Dushnil")
 
-    if ICON_PATH.exists():
-        app.setWindowIcon(QIcon(str(ICON_PATH)))
+    if ICON_ICO.exists():
+        app.setWindowIcon(QIcon(str(ICON_ICO)))
+    elif ICON_PNG.exists():
+        app.setWindowIcon(QIcon(str(ICON_PNG)))
 
     # Global Dark Palette
     palette = QPalette()
