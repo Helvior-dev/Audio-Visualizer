@@ -13,22 +13,13 @@ from PyQt6.QtCore import Qt, QRectF, QPointF
 from PyQt6.QtGui import QPainter, QImage, QColor, QFont, QPen
 from ..base_meter_widget import BaseMeterWidget
 from core.audio_worker import AudioWorker
-from core.config_manager import load_config
-
-HELP_LINES = [
-    "SPECTROGRAM",
-    "",
-    "Visualizes frequencies over time as a horizontally scrolling 2D heatmap.",
-    "",
-    "• Vertical axis: Frequency (20 Hz bass at bottom to 20 kHz treble at top).",
-    "• Horizontal axis: Time (scrolling horizontally from right to left).",
-    "• Color intensity: Amplitude / energy level adapted to active theme color.",
-]
+from core.config_manager import AppConfig
+from ..theme import palette
 
 FREQ_MARKERS = [100, 500, 1000, 5000, 10000, 20000]
 
 
-def generate_accent_lut(accent_hex: str) -> np.ndarray:
+def generate_accent_lut(accent_hex: str, root_hex: str = "#080b10") -> np.ndarray:
     """Generate 256 RGB entries harmoniously anchored to the active theme accent color."""
     hex_str = accent_hex.lstrip("#")
     try:
@@ -38,11 +29,12 @@ def generate_accent_lut(accent_hex: str) -> np.ndarray:
     except Exception:
         ar, ag, ab = 88, 166, 255
 
+    root_color = np.array([int(root_hex[i:i + 2], 16) for i in (1, 3, 5)])
     stops = [
-        (0.00, np.array([10, 5, 18])),
+        (0.00, root_color),
         (0.28, np.array([int(ar * 0.45), int(ag * 0.45), int(ab * 0.45)])),
         (0.60, np.array([ar, ag, ab])),
-        (0.82, np.array([255, 210, 80])),
+        (0.82, np.array([int(ar * 0.5 + 127), int(ag * 0.5 + 127), int(ab * 0.5 + 127)])),
         (1.00, np.array([255, 255, 245])),
     ]
 
@@ -60,18 +52,20 @@ def generate_accent_lut(accent_hex: str) -> np.ndarray:
 
 
 class SpectrogramWidget(BaseMeterWidget):
-    def __init__(self, audio_worker: AudioWorker, time_cols: int = 400, freq_bins: int = 256, parent=None):
-        super().__init__("SPECTROGRAM", HELP_LINES, parent)
+    def __init__(self, audio_worker: AudioWorker, time_cols: int = 400, freq_bins: int = 256, parent=None, config: AppConfig | None = None):
+        super().__init__("SPECTROGRAM", parent)
+        self.config = config if config is not None else AppConfig()
         self.audio_worker = audio_worker
         self.reader = audio_worker.create_reader(chunk_size=256)
         self.time_cols = time_cols
         self.freq_bins = freq_bins
         
         self.last_accent_hex = ""
-        self.colormap_lut = generate_accent_lut("#58A6FF")
+        self.colormap_lut = generate_accent_lut("#91c5ff")
 
         # Shape: (height=freq_bins, width=time_cols, channels=3)
         self.waterfall_buffer = np.zeros((freq_bins, time_cols, 3), dtype=np.uint8)
+        self.waterfall_levels = np.zeros((freq_bins, time_cols), dtype=np.uint8)
         self.fft_size = 2048
         self.window = np.hanning(self.fft_size).astype(np.float32)
         self.audio_buf = np.zeros(self.fft_size, dtype=np.float32)
@@ -87,16 +81,20 @@ class SpectrogramWidget(BaseMeterWidget):
         return float(top + plot_h * (1.0 - np.clip(t, 0.0, 1.0)))
 
     def render_ui(self, painter: QPainter):
-        cfg = load_config()
+        cfg = self.config
 
-        accent_hex = getattr(cfg, "accent_color", "#58A6FF")
-        if accent_hex != self.last_accent_hex:
+        colors = palette(cfg)
+        accent_hex = colors['accent']
+        color_key = (accent_hex, colors['root'])
+        if color_key != getattr(self, "_last_color_key", None):
+            self._last_color_key = color_key
             self.last_accent_hex = accent_hex
-            self.colormap_lut = generate_accent_lut(accent_hex)
+            self.colormap_lut = generate_accent_lut(accent_hex, colors['root'])
+            self.waterfall_buffer[:] = self.colormap_lut[self.waterfall_levels]
 
         w = self.width()
         h = self.height()
-        top_offset = 26
+        top_offset = 8 if self.is_standalone else 26
         left_margin = 28
         plot_w = w - left_margin
         plot_h = h - top_offset - 6
@@ -143,6 +141,8 @@ class SpectrogramWidget(BaseMeterWidget):
                     # Shift left, insert new slice on right
                     self.waterfall_buffer[:, :-1, :] = self.waterfall_buffer[:, 1:, :]
                     self.waterfall_buffer[:, -1, :] = new_col_rgb
+                    self.waterfall_levels[:, :-1] = self.waterfall_levels[:, 1:]
+                    self.waterfall_levels[:, -1] = lut_indices
 
                 used = num_slices * SLICE_SIZE
                 self.sample_accumulator = self.sample_accumulator[used:]
@@ -172,5 +172,5 @@ class SpectrogramWidget(BaseMeterWidget):
 
             # Label
             lbl = f"{int(freq/1000)}k" if freq >= 1000 else str(freq)
-            painter.setPen(QColor(100, 100, 115))
+            painter.setPen(QColor(colors['muted']))
             painter.drawText(QRectF(0, y - 6, left_margin - 4, 12), Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter, lbl)

@@ -9,6 +9,7 @@ from PyQt6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QToolButt
 from PyQt6.QtGui import QIcon
 from pathlib import Path
 from ..frameless_window import NativeDarkWindow
+from ..theme import control_style
 
 ASSETS_DIR = Path(__file__).resolve().parent.parent.parent / "assets"
 ICON_PATH = ASSETS_DIR / "icon.png"
@@ -33,36 +34,18 @@ class FloatingModuleWindow(NativeDarkWindow):
 
         # Floating Mini Toolbar (Dock back button & Pin)
         self.mini_bar = QWidget(self)
-        self.mini_bar.setFixedHeight(28)
-        self.mini_bar.setStyleSheet("""
-            QWidget {
-                background-color: #121216;
-                color: #A0A0A8;
-                font-family: 'Segoe UI', Arial;
-                font-size: 10px;
-                font-weight: bold;
-            }
-            QToolButton {
-                background-color: #1A1A22;
-                border: 1px solid #282834;
-                border-radius: 3px;
-                padding: 2px 6px;
-                color: #A0A0A8;
-            }
-            QToolButton:hover {
-                background-color: #262634;
-                color: #58A6FF;
-                border-color: #58A6FF;
-            }
-        """)
+        self.mini_bar.setFixedHeight(34)
         mb_layout = QHBoxLayout(self.mini_bar)
-        mb_layout.setContentsMargins(6, 2, 6, 2)
+        mb_layout.setContentsMargins(8, 4, 8, 4)
         mb_layout.setSpacing(6)
 
         # Redock Button
         self.redock_btn = QToolButton(self.mini_bar)
-        self.redock_btn.setText("⇲ Dock to Suite")
-        self.redock_btn.setToolTip("Return this module to the main window")
+        self.redock_btn.setObjectName("ReturnButton")
+        self.redock_btn.setText("Return to Main Window")
+        self.redock_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
+        self.redock_btn.setFixedHeight(26)
+        self.redock_btn.setToolTip("Move this module back to the main window")
         self.redock_btn.clicked.connect(self._on_redock)
         mb_layout.addWidget(self.redock_btn)
 
@@ -70,7 +53,11 @@ class FloatingModuleWindow(NativeDarkWindow):
 
         # Pin / Always on Top Button
         self.pin_btn = QToolButton(self.mini_bar)
-        self.pin_btn.setText("📌 Pin")
+        self.pin_btn.setObjectName("TopmostButton")
+        self.pin_btn.setText("Always on Top")
+        self.pin_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
+        self.pin_btn.setCheckable(True)
+        self.pin_btn.setFixedHeight(26)
         self.pin_btn.setToolTip("Toggle Always on Top")
         self.pin_btn.clicked.connect(self._toggle_pin)
         mb_layout.addWidget(self.pin_btn)
@@ -84,9 +71,26 @@ class FloatingModuleWindow(NativeDarkWindow):
         self.main_layout.addWidget(self.content_container, 1)
 
     def _toggle_pin(self):
-        new_pinned = not self.is_always_on_top()
-        self.set_always_on_top(new_pinned)
-        self.pin_btn.setStyleSheet("color: #58A6FF; border-color: #58A6FF;" if new_pinned else "")
+        self.set_always_on_top(self.pin_btn.isChecked())
+
+    def set_always_on_top(self, pinned: bool):
+        super().set_always_on_top(pinned)
+        self.pin_btn.setChecked(pinned)
+
+    def apply_theme(self, colors: dict[str, str]):
+        self.setStyleSheet(f"background: {colors['root']};")
+        self.mini_bar.setStyleSheet(f"""
+            QWidget {{ background: {colors['card']}; font-family: 'Cascadia Mono', Consolas, monospace; }}
+            QToolButton {{ background: {colors['card']}; color: {colors['text']};
+                border: 1px solid {colors['border']}; border-radius: 0;
+                padding: 3px 10px; font-size: 11px; font-weight: bold; }}
+            QToolButton#ReturnButton {{ background: {colors['grid']}; color: {colors['accent']};
+                border-color: {colors['accent']}; }}
+            QToolButton:hover {{ background: {colors['grid']}; color: {colors['accent']};
+                border-color: {colors['accent']}; }}
+            QToolButton#TopmostButton:checked {{ background: {colors['grid']};
+                color: {colors['accent']}; border-color: {colors['accent']}; }}
+        """)
 
     def attach_widget(self, widget: QWidget):
         self.attached_widget = widget
@@ -142,16 +146,16 @@ class DockCard(QFrame):
         p_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
         p_layout.setSpacing(6)
 
-        self.p_title = QLabel(f"⧉  {self.title_str.upper()} DETACHED", self.placeholder)
+        self.p_title = QLabel(f"{self.title_str.upper()} IS IN A SEPARATE WINDOW", self.placeholder)
         self.p_title.setStyleSheet("color: #707588; font-weight: bold; font-size: 11px;")
         self.p_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
-        self.p_desc = QLabel("Currently running in a floating window", self.placeholder)
+        self.p_desc = QLabel("This module remains active outside the main window.", self.placeholder)
         self.p_desc.setStyleSheet("color: #4a4e60; font-size: 10px;")
         self.p_desc.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         self.p_btn = QToolButton(self.placeholder)
-        self.p_btn.setText("⇲  Dock to Suite")
+        self.p_btn.setText("Return to Main Window")
         self.p_btn.setStyleSheet("""
             QToolButton {
                 background-color: #1a1c26;
@@ -189,7 +193,19 @@ class DockCard(QFrame):
             self.widget.show()
             self._apply_style(is_detached=False)
 
+    def apply_theme(self, colors: dict[str, str]):
+        self._colors = colors
+        self.p_title.setStyleSheet(f"color: {colors['accent']}; font-weight: bold; font-size: 11px;")
+        self.p_desc.setStyleSheet(f"color: {colors['muted']}; font-size: 10px;")
+        self.p_btn.setStyleSheet(control_style(colors))
+        self._apply_style(is_detached=not self.placeholder.isHidden())
+
     def _apply_style(self, is_detached: bool):
+        if hasattr(self, "_colors"):
+            colors = self._colors
+            edge = "dashed" if is_detached else "solid"
+            self.setStyleSheet(f"DockCard {{ background: {colors['card']}; border: 1px {edge} {colors['border']}; border-radius: 0; }}")
+            return
         if is_detached:
             self.setStyleSheet("""
                 DockCard {

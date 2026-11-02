@@ -7,6 +7,7 @@ from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtWidgets import (
     QWidget, QHBoxLayout, QPushButton, QToolButton, QSizePolicy
 )
+from ..theme import control_style
 
 
 class TitleBar(QWidget):
@@ -19,7 +20,7 @@ class TitleBar(QWidget):
     pause_suite_toggled = pyqtSignal(bool)
     undock_all_toggled = pyqtSignal(bool)
 
-    def __init__(self, parent_window, title="AUDIO VISUALIZER", is_floating=False, is_main=True):
+    def __init__(self, parent_window, title="Audio Visualizer", is_floating=False, is_main=True):
         super().__init__(parent_window)
         self.window = parent_window
         self.title_text = title
@@ -80,6 +81,18 @@ class TitleBar(QWidget):
 
         self._init_ui()
 
+    def apply_theme(self, colors: dict[str, str]):
+        self.setStyleSheet(control_style(colors) + f"""
+            TitleBar {{ background: {colors['card']}; }}
+            QPushButton:checked {{ background: {colors['grid']}; }}
+        """)
+        self._accent = colors['accent']
+        self._grid = colors['grid']
+        if self._is_pinned:
+            self.pin_btn.setStyleSheet(f"color: {self._accent}; border-color: {self._accent}; background: {self._grid};")
+        if self._is_undocked_all:
+            self.undock_all_btn.setStyleSheet(f"color: {self._accent}; border-color: {self._accent}; background: {self._grid};")
+
     def _init_ui(self):
         layout = QHBoxLayout(self)
         layout.setContentsMargins(8, 4, 8, 4)
@@ -111,29 +124,29 @@ class TitleBar(QWidget):
         # Pause Suite button (visible only when at least one module is floating)
         if self.is_main:
             self.pause_btn = QToolButton(self)
-            self.pause_btn.setText("⏸ Pause Suite")
-            self.pause_btn.setToolTip("Pause docked suite visualizations (leaves external floating windows running)")
+            self.pause_btn.setText("Pause")
+            self.pause_btn.setToolTip("Pause modules in the main window; floating modules keep running")
             self.pause_btn.clicked.connect(self._toggle_pause_suite)
             self.pause_btn.hide()
             layout.addWidget(self.pause_btn)
 
             # Undock All / Dock All Button
             self.undock_all_btn = QToolButton(self)
-            self.undock_all_btn.setText("↗ Undock All")
-            self.undock_all_btn.setToolTip("Pop-out all active modules into floating windows")
+            self.undock_all_btn.setText("Detach All")
+            self.undock_all_btn.setToolTip("Move all visible modules into separate windows")
             self.undock_all_btn.clicked.connect(self._toggle_undock_all)
             layout.addWidget(self.undock_all_btn)
 
             # Settings Button
             self.settings_btn = QToolButton(self)
-            self.settings_btn.setText("⚙ Settings")
-            self.settings_btn.setToolTip("Settings & Audio Devices")
+            self.settings_btn.setText("Settings")
+            self.settings_btn.setToolTip("Appearance, audio source, performance and updates")
             self.settings_btn.clicked.connect(self.settings_clicked.emit)
             layout.addWidget(self.settings_btn)
 
         # Pin / Always on Top
         self.pin_btn = QToolButton(self)
-        self.pin_btn.setText("📌 Pin")
+        self.pin_btn.setText("Always on Top")
         self.pin_btn.setToolTip("Toggle Always on Top")
         self.pin_btn.clicked.connect(self._toggle_pin)
         layout.addWidget(self.pin_btn)
@@ -143,16 +156,18 @@ class TitleBar(QWidget):
 
     def _toggle_pin(self):
         self._is_pinned = not self._is_pinned
-        self.pin_btn.setStyleSheet("color: #58A6FF; border-color: #58A6FF; background-color: #1A283C;" if self._is_pinned else "")
+        accent = getattr(self, "_accent", "#91c5ff")
+        grid = getattr(self, "_grid", "#1c2938")
+        self.pin_btn.setStyleSheet(f"color: {accent}; border-color: {accent}; background: {grid};" if self._is_pinned else "")
         self.pin_toggled.emit(self._is_pinned)
 
     def _toggle_pause_suite(self):
         self._is_paused = not self._is_paused
         if self._is_paused:
-            self.pause_btn.setText("▶ Resume Suite")
+            self.pause_btn.setText("Resume")
             self.pause_btn.setStyleSheet("color: #FFB300; border-color: #FFB300; background-color: #2D2510;")
         else:
-            self.pause_btn.setText("⏸ Pause Suite")
+            self.pause_btn.setText("Pause")
             self.pause_btn.setStyleSheet("")
         self.pause_suite_toggled.emit(self._is_paused)
 
@@ -165,12 +180,14 @@ class TitleBar(QWidget):
         self._is_undocked_all = is_undocked
         if hasattr(self, "undock_all_btn"):
             if is_undocked:
-                self.undock_all_btn.setText("⇲ Dock All")
-                self.undock_all_btn.setToolTip("Return all floating modules back to the suite")
-                self.undock_all_btn.setStyleSheet("color: #58A6FF; border-color: #58A6FF; background-color: #1A283C;")
+                self.undock_all_btn.setText("Attach All")
+                self.undock_all_btn.setToolTip("Return all floating modules to the main window")
+                accent = getattr(self, "_accent", "#91c5ff")
+                grid = getattr(self, "_grid", "#1c2938")
+                self.undock_all_btn.setStyleSheet(f"color: {accent}; border-color: {accent}; background: {grid};")
             else:
-                self.undock_all_btn.setText("↗ Undock All")
-                self.undock_all_btn.setToolTip("Pop-out all active modules into floating windows")
+                self.undock_all_btn.setText("Detach All")
+                self.undock_all_btn.setToolTip("Move all visible modules into separate windows")
                 self.undock_all_btn.setStyleSheet("")
 
     def set_has_floating(self, has_floating: bool):

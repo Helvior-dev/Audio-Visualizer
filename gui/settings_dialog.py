@@ -7,7 +7,7 @@ target frame rates, window opacity, and custom accent theme colors.
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QGridLayout, QLabel, QComboBox, QSlider,
-    QPushButton, QGroupBox, QFrame, QWidget, QColorDialog
+    QPushButton, QGroupBox, QFrame, QWidget, QColorDialog, QTabWidget
 )
 from PyQt6.QtGui import QFont, QColor
 from core.audio_capture import (
@@ -18,17 +18,7 @@ from core.audio_worker import AudioWorker
 from core.version import __version__, RELEASES_URL
 from core.updater import UpdateCheckWorker
 from .widgets.update_dialog import UpdateDialog
-
-ACCENT_PRESETS = [
-    ("Spectrum Magenta", "#FF4570"),
-    ("Default Blue", "#58A6FF"),
-    ("Neon Green", "#3DDC84"),
-    ("Cyberpunk Cyan", "#00E5FF"),
-    ("Hot Pink", "#FF2A85"),
-    ("Amber Gold", "#FFB300"),
-    ("Slate Blue", "#9BB3CE"),
-]
-
+from .theme import THEMES, palette
 
 class SettingsDialog(QDialog):
     config_updated = pyqtSignal(AppConfig)
@@ -40,89 +30,9 @@ class SettingsDialog(QDialog):
         self._update_worker = None
 
         self.setWindowTitle("Settings")
-        self.setFixedSize(540, 520)
-        self.setStyleSheet("""
-            QDialog {
-                background-color: #14141A;
-                color: #D8D8E0;
-                font-family: 'Segoe UI', Arial, sans-serif;
-                border: 1px solid #282834;
-                border-radius: 6px;
-            }
-            QGroupBox {
-                font-weight: bold;
-                font-size: 11px;
-                color: #58A6FF;
-                border: 1px solid #242430;
-                border-radius: 5px;
-                margin-top: 10px;
-                padding-top: 12px;
-            }
-            QGroupBox::title {
-                subcontrol-origin: margin;
-                subcontrol-position: top left;
-                padding: 0 6px;
-            }
-            QLabel {
-                color: #C0C0C8;
-                font-size: 11px;
-            }
-            QComboBox {
-                background-color: #1E1E26;
-                color: #FFFFFF;
-                border: 1px solid #343444;
-                border-radius: 4px;
-                padding: 4px 8px;
-                font-size: 11px;
-            }
-            QComboBox:hover {
-                border-color: #58A6FF;
-            }
-            QComboBox QAbstractItemView {
-                background-color: #1E1E26;
-                color: #FFFFFF;
-                selection-background-color: #343448;
-                selection-color: #58A6FF;
-                border: 1px solid #343444;
-            }
-            QSlider::groove:horizontal {
-                height: 4px;
-                background: #282836;
-                border-radius: 2px;
-            }
-            QSlider::sub-page:horizontal {
-                background: #58A6FF;
-                border-radius: 2px;
-            }
-            QSlider::handle:horizontal {
-                background: #FFFFFF;
-                border: 1px solid #58A6FF;
-                width: 12px;
-                margin-top: -4px;
-                margin-bottom: -4px;
-                border-radius: 6px;
-            }
-            QPushButton {
-                background-color: #20202A;
-                color: #FFFFFF;
-                border: 1px solid #343444;
-                border-radius: 4px;
-                padding: 5px 10px;
-                font-weight: bold;
-                font-size: 11px;
-            }
-            QPushButton:hover {
-                background-color: #2C2C3C;
-                border-color: #58A6FF;
-            }
-            QPushButton.primary-btn {
-                background-color: #1F6FEB;
-                border-color: #388BFD;
-            }
-            QPushButton.primary-btn:hover {
-                background-color: #388BFD;
-            }
-        """)
+        self.resize(580, 410)
+        self.setMinimumSize(500, 360)
+        self.apply_theme()
 
         self._init_ui()
         self._load_devices()
@@ -134,70 +44,56 @@ class SettingsDialog(QDialog):
 
         # Header Title
         title_lbl = QLabel("SETTINGS & CUSTOMIZATION", self)
-        title_lbl.setFont(QFont("Segoe UI", 12, QFont.Weight.Bold))
-        title_lbl.setStyleSheet("color: #FFFFFF; letter-spacing: 1px;")
+        title_lbl.setFont(QFont("Cascadia Mono", 12, QFont.Weight.Bold))
         layout.addWidget(title_lbl)
+
+        self.tabs = QTabWidget(self)
+        layout.addWidget(self.tabs, 1)
+        appearance = QWidget(self)
+        audio = QWidget(self)
+        performance = QWidget(self)
+        updates = QWidget(self)
+        for page, label in ((appearance, "Appearance"), (audio, "Audio"),
+                            (performance, "Performance"), (updates, "Updates")):
+            self.tabs.addTab(page, label)
+
+        appearance_layout = QVBoxLayout(appearance)
+        audio_layout = QVBoxLayout(audio)
+        performance_layout = QVBoxLayout(performance)
+        updates_layout = QVBoxLayout(updates)
 
         # -------------------------------------------------------------
         # 1. Accent Theme & Colors (2-Row Clean Grid)
         # -------------------------------------------------------------
-        theme_group = QGroupBox("ACCENT THEME & COLORS", self)
+        theme_group = QGroupBox("COLOR THEME", appearance)
         tg_layout = QVBoxLayout(theme_group)
         tg_layout.setSpacing(8)
+        tg_layout.addWidget(QLabel("Choose a complete palette for the interface and meters:"))
+        self.theme_combo = QComboBox(theme_group)
+        for key, values in THEMES.items():
+            self.theme_combo.addItem(values[0], key)
+        self.theme_combo.addItem("Custom accent (blue base)", "custom")
+        self.theme_combo.setCurrentIndex(self.theme_combo.findData(self.config.theme))
+        self.theme_combo.currentIndexChanged.connect(self._on_theme_changed)
+        tg_layout.addWidget(self.theme_combo)
 
-        grid_layout = QGridLayout()
-        grid_layout.setHorizontalSpacing(8)
-        grid_layout.setVerticalSpacing(8)
-
-        self.preset_btns = []
-        for idx, (name, hex_code) in enumerate(ACCENT_PRESETS):
-            btn = QPushButton(name, theme_group)
-            btn.setFixedHeight(28)
-            is_active = (self.config.accent_color.upper() == hex_code.upper())
-            btn.setStyleSheet(f"""
-                QPushButton {{
-                    background-color: {'#2A2A38' if is_active else '#181820'};
-                    border: 1.5px solid {hex_code};
-                    color: {hex_code};
-                    font-size: 11px;
-                    border-radius: 4px;
-                    padding: 2px 8px;
-                }}
-                QPushButton:hover {{
-                    background-color: #323244;
-                }}
-            """)
-            btn.clicked.connect(lambda _, h=hex_code: self._set_accent_color(h))
-            row = idx // 4
-            col = idx % 4
-            grid_layout.addWidget(btn, row, col)
-            self.preset_btns.append((btn, hex_code))
-
-        # Pick Custom Color button on row 1, col 3
         custom_container = QWidget(theme_group)
         cc_layout = QHBoxLayout(custom_container)
         cc_layout.setContentsMargins(0, 0, 0, 0)
-        cc_layout.setSpacing(6)
-
         self.color_preview = QLabel(custom_container)
         self.color_preview.setFixedSize(22, 22)
-        self.color_preview.setStyleSheet(f"background-color: {self.config.accent_color}; border: 1px solid #444; border-radius: 3px;")
         cc_layout.addWidget(self.color_preview)
-
-        custom_btn = QPushButton("🎨 Pick...", custom_container)
-        custom_btn.setFixedHeight(28)
+        custom_btn = QPushButton("Choose custom accent...", custom_container)
         custom_btn.clicked.connect(self._pick_custom_color)
         cc_layout.addWidget(custom_btn)
-
-        grid_layout.addWidget(custom_container, 1, 3)
-
-        tg_layout.addLayout(grid_layout)
-        layout.addWidget(theme_group)
+        cc_layout.addStretch(1)
+        tg_layout.addWidget(custom_container)
+        appearance_layout.addWidget(theme_group)
 
         # -------------------------------------------------------------
         # 2. Audio Capture Source
         # -------------------------------------------------------------
-        audio_group = QGroupBox("AUDIO CAPTURE SOURCE", self)
+        audio_group = QGroupBox("AUDIO CAPTURE SOURCE", audio)
         ag_layout = QVBoxLayout(audio_group)
         ag_layout.setSpacing(6)
         ag_layout.addWidget(QLabel("Select Output (Loopback) or Microphone:"))
@@ -205,12 +101,13 @@ class SettingsDialog(QDialog):
         self.device_combo = QComboBox(self)
         self.device_combo.currentIndexChanged.connect(self._on_device_changed)
         ag_layout.addWidget(self.device_combo)
-        layout.addWidget(audio_group)
+        audio_layout.addWidget(audio_group)
+        audio_layout.addStretch(1)
 
         # -------------------------------------------------------------
         # 3. Performance & Display
         # -------------------------------------------------------------
-        perf_group = QGroupBox("DISPLAY & PERFORMANCE", self)
+        perf_group = QGroupBox("FRAME RATE", performance)
         pg_layout = QVBoxLayout(perf_group)
         pg_layout.setSpacing(8)
 
@@ -223,6 +120,10 @@ class SettingsDialog(QDialog):
         self.fps_combo.currentIndexChanged.connect(self._on_fps_changed)
         fps_layout.addWidget(self.fps_combo)
         pg_layout.addLayout(fps_layout)
+        performance_layout.addWidget(perf_group)
+
+        display_group = QGroupBox("WINDOW", appearance)
+        display_layout = QVBoxLayout(display_group)
 
         opac_layout = QHBoxLayout()
         opac_layout.addWidget(QLabel("Window Opacity:"))
@@ -233,14 +134,15 @@ class SettingsDialog(QDialog):
         opac_layout.addWidget(self.opac_slider)
         self.opac_val_lbl = QLabel(f"{int(self.config.window_opacity * 100)}%", self)
         opac_layout.addWidget(self.opac_val_lbl)
-        pg_layout.addLayout(opac_layout)
-
-        layout.addWidget(perf_group)
+        display_layout.addLayout(opac_layout)
+        appearance_layout.addWidget(display_group)
+        appearance_layout.addStretch(1)
+        performance_layout.addStretch(1)
 
         # -------------------------------------------------------------
         # 4. Updates & Software
         # -------------------------------------------------------------
-        updates_group = QGroupBox("UPDATES & SOFTWARE", self)
+        updates_group = QGroupBox("UPDATES & SOFTWARE", updates)
         ug_layout = QVBoxLayout(updates_group)
         ug_layout.setSpacing(6)
 
@@ -249,7 +151,7 @@ class SettingsDialog(QDialog):
         ver_row.addWidget(ver_lbl)
         ver_row.addStretch(1)
 
-        self.check_update_btn = QPushButton("🔄 Check for Updates", self)
+        self.check_update_btn = QPushButton("Check for Updates", self)
         self.check_update_btn.setFixedHeight(26)
         self.check_update_btn.clicked.connect(self._check_for_updates)
         ver_row.addWidget(self.check_update_btn)
@@ -260,9 +162,8 @@ class SettingsDialog(QDialog):
         self.update_status_lbl.setStyleSheet("font-size: 10px; color: #888899;")
         ug_layout.addWidget(self.update_status_lbl)
 
-        layout.addWidget(updates_group)
-
-        layout.addStretch(1)
+        updates_layout.addWidget(updates_group)
+        updates_layout.addStretch(1)
 
         # Bottom Close Button
         btn_layout = QHBoxLayout()
@@ -272,24 +173,53 @@ class SettingsDialog(QDialog):
         close_btn.clicked.connect(self.accept)
         btn_layout.addWidget(close_btn)
         layout.addLayout(btn_layout)
+        self.apply_theme()
 
     def _set_accent_color(self, hex_code: str):
+        self.config.theme = "custom"
         self.config.accent_color = hex_code
-        self.color_preview.setStyleSheet(f"background-color: {hex_code}; border: 1px solid #444; border-radius: 3px;")
-        for btn, h in self.preset_btns:
-            is_active = (h.upper() == hex_code.upper())
-            btn.setStyleSheet(f"""
-                QPushButton {{
-                    background-color: {'#2A2A38' if is_active else '#181820'};
-                    border: 1.5px solid {h};
-                    color: {h};
-                    font-size: 11px;
-                    border-radius: 4px;
-                    padding: 2px 8px;
-                }}
-            """)
+        self.theme_combo.blockSignals(True)
+        self.theme_combo.setCurrentIndex(self.theme_combo.findData("custom"))
+        self.theme_combo.blockSignals(False)
+        self.apply_theme()
         save_config(self.config)
         self.config_updated.emit(self.config)
+
+    def _on_theme_changed(self, index: int):
+        name = self.theme_combo.itemData(index)
+        if name is None:
+            return
+        self.config.theme = name
+        if name != "custom":
+            self.config.accent_color = THEMES[name][4]
+        self.apply_theme()
+        save_config(self.config)
+        self.config_updated.emit(self.config)
+
+    def apply_theme(self):
+        colors = palette(self.config)
+        self.setStyleSheet(f"""
+            QDialog {{ background: {colors['root']}; color: {colors['text']};
+                font-family: 'Cascadia Mono', Consolas, monospace; }}
+            QTabWidget::pane {{ border: 1px solid {colors['border']}; }}
+            QTabBar::tab {{ background: {colors['root']}; color: {colors['muted']};
+                border: 0; border-bottom: 2px solid transparent; padding: 9px 13px; }}
+            QTabBar::tab:selected {{ color: {colors['accent']}; border-bottom-color: {colors['fill']}; }}
+            QGroupBox {{ color: {colors['accent']}; border: 1px solid {colors['border']};
+                margin-top: 12px; padding-top: 12px; }}
+            QGroupBox::title {{ subcontrol-origin: margin; padding: 0 6px; }}
+            QLabel {{ color: {colors['text']}; }}
+            QPushButton, QComboBox {{ background: {colors['card']}; color: {colors['text']};
+                border: 1px solid {colors['border']}; border-radius: 0; padding: 6px 9px; }}
+            QPushButton:hover, QComboBox:hover {{ border-color: {colors['accent']}; }}
+            QComboBox QAbstractItemView {{ background: {colors['card']}; color: {colors['text']};
+                selection-background-color: {colors['grid']}; border: 1px solid {colors['border']}; }}
+            QSlider::groove:horizontal {{ height: 4px; background: {colors['grid']}; }}
+            QSlider::sub-page:horizontal {{ background: {colors['fill']}; }}
+            QSlider::handle:horizontal {{ background: {colors['accent']}; width: 12px; margin: -5px 0; }}
+        """)
+        if hasattr(self, "color_preview"):
+            self.color_preview.setStyleSheet(f"background: {colors['accent']}; border: 1px solid {colors['border']};")
 
     def _pick_custom_color(self):
         col = QColorDialog.getColor(QColor(self.config.accent_color), self, "Select Accent Color")
@@ -305,11 +235,11 @@ class SettingsDialog(QDialog):
 
         for src in loopback_list:
             self._sources.append(src)
-            self.device_combo.addItem(f"🔊 [Output Loopback] {src.name}", src)
+            self.device_combo.addItem(f"System Audio: {src.name}", src)
 
         for src in mic_list:
             self._sources.append(src)
-            self.device_combo.addItem(f"🎤 [Microphone] {src.name}", src)
+            self.device_combo.addItem(f"Microphone: {src.name}", src)
 
         current_kind = self.config.audio_source_kind
         current_idx = self.config.audio_source_device_index
@@ -352,7 +282,7 @@ class SettingsDialog(QDialog):
         self.check_update_btn.setEnabled(False)
         self.check_update_btn.setText("Checking...")
         self.update_status_lbl.setText("Connecting to GitHub...")
-        self.update_status_lbl.setStyleSheet("font-size: 10px; color: #58A6FF;")
+        self.update_status_lbl.setStyleSheet(f"font-size: 10px; color: {palette(self.config)['accent']};")
 
         self._update_worker = UpdateCheckWorker(current_version=__version__, parent=self)
         self._update_worker.update_available.connect(self._on_update_available)
@@ -362,21 +292,21 @@ class SettingsDialog(QDialog):
 
     def _on_update_available(self, release_info: dict):
         self.check_update_btn.setEnabled(True)
-        self.check_update_btn.setText("🔄 Check for Updates")
+        self.check_update_btn.setText("Check for Updates")
         new_tag = release_info.get("tag_name", "vNext")
-        self.update_status_lbl.setText(f"🎉 New version {new_tag} is available!")
+        self.update_status_lbl.setText(f"Version {new_tag} is available.")
         self.update_status_lbl.setStyleSheet("font-size: 10px; color: #3DDC84; font-weight: bold;")
         dlg = UpdateDialog(release_info, is_preview=False, parent=self)
         dlg.exec()
 
     def _on_no_update(self, release_info: dict):
         self.check_update_btn.setEnabled(True)
-        self.check_update_btn.setText("🔄 Check for Updates")
-        self.update_status_lbl.setText(f"✓ You are using the latest version (v{__version__})")
+        self.check_update_btn.setText("Check for Updates")
+        self.update_status_lbl.setText(f"You have the latest version (v{__version__}).")
         self.update_status_lbl.setStyleSheet("font-size: 10px; color: #3DDC84;")
 
     def _on_update_error(self, err_msg: str):
         self.check_update_btn.setEnabled(True)
-        self.check_update_btn.setText("🔄 Check for Updates")
+        self.check_update_btn.setText("Check for Updates")
         self.update_status_lbl.setText(f"Failed to check: {err_msg}")
         self.update_status_lbl.setStyleSheet("font-size: 10px; color: #FF4570;")

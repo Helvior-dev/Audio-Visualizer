@@ -23,8 +23,8 @@ from OpenGL.GL import (
 )
 from core.audio_worker import AudioWorker
 from core.gl_utils import create_program
-from core.config_manager import load_config
-from ..widgets.help_overlay import HelpOverlay
+from core.config_manager import AppConfig
+from ..theme import palette, rgb, apply_meter_header, popout_icon
 
 HISTORY_SAMPLES = 2048
 
@@ -47,25 +47,14 @@ void main() {
 }
 """
 
-HELP_LINES = [
-    "OSCILLOSCOPE",
-    "",
-    "Visualizes the continuous audio waveform moving in real time from left to right.",
-    "",
-    "• Vertical axis: Instantaneous amplitude (loudness).",
-    "• Horizontal axis: Time domain.",
-    "• Fast jagged wiggles mean high-pitched or noisy sound.",
-    "• Slow smooth curves mean bass or low tones.",
-    "• Dense, busy waveform means a louder mix.",
-]
-
-
 class OscilloscopeWidget(QOpenGLWidget):
     undock_requested = pyqtSignal()
     close_requested = pyqtSignal()
 
-    def __init__(self, audio_worker: AudioWorker, parent=None):
+    def __init__(self, audio_worker: AudioWorker, parent=None, config: AppConfig | None = None):
         super().__init__(parent)
+        self.config = config if config is not None else AppConfig()
+        self.is_standalone = False
         self.audio_worker = audio_worker
         self.reader = audio_worker.create_reader(chunk_size=256)
         self.history = np.zeros(HISTORY_SAMPLES, dtype=np.float32)
@@ -76,10 +65,6 @@ class OscilloscopeWidget(QOpenGLWidget):
 
         # Header Controls
         self._init_header_controls()
-
-        # Help overlay
-        self.help_overlay = HelpOverlay("OSCILLOSCOPE", HELP_LINES, self)
-        self.help_overlay.hide()
 
         # OpenGL handles
         self.program = None
@@ -125,18 +110,10 @@ class OscilloscopeWidget(QOpenGLWidget):
         h_layout.addWidget(self.title_lbl)
         h_layout.addStretch(1)
 
-        # Help Button
-        self.help_btn = QToolButton(self.header_frame)
-        self.help_btn.setText("?")
-        self.help_btn.setToolTip("Show meter explanations")
-        self.help_btn.setFixedSize(18, 18)
-        self.help_btn.clicked.connect(self._toggle_help)
-        h_layout.addWidget(self.help_btn)
-
         # Undock / Pop-out Button
         self.undock_btn = QToolButton(self.header_frame)
-        self.undock_btn.setText("↗")
-        self.undock_btn.setToolTip("Pop-out into floating window")
+        self.undock_btn.setIcon(popout_icon("#91c5ff"))
+        self.undock_btn.setToolTip("Move to a separate window")
         self.undock_btn.setFixedSize(18, 18)
         self.undock_btn.clicked.connect(self.undock_requested.emit)
         h_layout.addWidget(self.undock_btn)
@@ -147,26 +124,17 @@ class OscilloscopeWidget(QOpenGLWidget):
 
     def set_standalone_mode(self, is_standalone: bool):
         self.is_standalone = is_standalone
-        self.undock_btn.setVisible(not is_standalone)
+        self.header_frame.setVisible(not is_standalone)
+        self.update()
         if is_standalone:
             if not self.timer.isActive():
                 self.timer.start()
         else:
             self.timer.stop()
 
-    def _toggle_help(self):
-        if self.help_overlay.isVisible():
-            self.help_overlay.hide()
-        else:
-            self.help_overlay.setGeometry(self.rect())
-            self.help_overlay.show()
-            self.help_overlay.raise_()
-
     def resizeEvent(self, event):
         super().resizeEvent(event)
         self.header_frame.setGeometry(0, 0, self.width(), 26)
-        if self.help_overlay.isVisible():
-            self.help_overlay.setGeometry(self.rect())
 
     def initializeGL(self):
         try:
@@ -192,8 +160,11 @@ class OscilloscopeWidget(QOpenGLWidget):
     def resizeGL(self, w, h):
         glViewport(0, 0, max(1, w), max(1, h))
 
+    def apply_theme(self, colors: dict[str, str]):
+        apply_meter_header(self, colors)
+
     def paintGL(self):
-        cfg = load_config()
+        cfg = self.config
 
         # 1. Update audio data
         if not getattr(self, "is_paused", False):
@@ -214,12 +185,13 @@ class OscilloscopeWidget(QOpenGLWidget):
                         self.history[-n:] = mono
 
         # 2. Deep Dark Background (#0b0b0d)
-        glClearColor(0.043, 0.043, 0.051, 1.0)
+        colors = palette(cfg)
+        glClearColor(*rgb(colors['root']), 1.0)
         glClear(GL_COLOR_BUFFER_BIT)
 
         # 3. Direct GPU Shader Draw with Accent Theme
         if self.program and self.vao:
-            accent_hex = getattr(cfg, "accent_color", "#58A6FF").lstrip("#")
+            accent_hex = colors['accent'].lstrip("#")
             try:
                 ar = int(accent_hex[0:2], 16) / 255.0
                 ag = int(accent_hex[2:4], 16) / 255.0

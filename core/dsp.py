@@ -98,6 +98,51 @@ class KWeightingFilter:
         return self.stage2.process(self.stage1.process(x))
 
 
+class TruePeakMeter:
+    """Track intersample peaks with a streaming windowed-sinc interpolator.
+
+    Interpolated values lag the input by RADIUS frames to retain continuity
+    between callbacks; the sample peak is included immediately.
+    """
+    RADIUS = 12
+
+    def __init__(self, sample_rate: int):
+        factor = 2 if sample_rate >= 96000 else 4
+        taps = np.arange(-self.RADIUS, self.RADIUS + 1)
+        window = np.kaiser(len(taps), 8.6)
+        self.kernels = []
+        for phase in range(1, factor):
+            kernel = np.sinc(taps - phase / factor) * window
+            self.kernels.append((kernel / kernel.sum())[::-1])
+        self.reset()
+
+    def reset(self):
+        self.history = None
+        self._startup = np.empty((2, 0), dtype=np.float64)
+        self.peak = 0.0
+
+    def process(self, left: np.ndarray, right: np.ndarray) -> float:
+        if len(left) == 0:
+            return self.peak
+        self.peak = max(self.peak, float(np.max(np.abs(left))), float(np.max(np.abs(right))))
+        if self.history is None:
+            self._startup = np.concatenate((self._startup, np.stack((left, right))), axis=1)
+            if self._startup.shape[1] <= 2 * self.RADIUS:
+                return self.peak
+            # Mirror the first samples rather than assuming silence before the
+            # stream, matching the reference's peak on a hard onset.
+            self.history = self._startup[:, 1:2 * self.RADIUS + 1][:, ::-1].copy()
+            left, right = self._startup
+            self._startup = np.empty((2, 0), dtype=np.float64)
+        for channel, samples in enumerate((left, right)):
+            data = np.concatenate((self.history[channel], samples))
+            for kernel in self.kernels:
+                interpolated = np.convolve(data, kernel, mode="valid")
+                self.peak = max(self.peak, float(np.max(np.abs(interpolated))))
+            self.history[channel] = data[-2 * self.RADIUS:]
+        return self.peak
+
+
 class LoudnessProcessor:
     """Computes Momentary, Short-Term, Integrated LUFS, LRA and True-Peak."""
     ABS_GATE_LUFS = -70.0
@@ -133,12 +178,16 @@ class LoudnessProcessor:
         self.lra = 0.0
         self.peak_db = self.ABS_GATE_LUFS
         self._peak_hold_db = self.ABS_GATE_LUFS
+        self._true_peak_meter = TruePeakMeter(sample_rate)
+        self.true_peak_db = self.ABS_GATE_LUFS
 
     def reset_integrated(self):
         self._integrated_blocks.clear()
         self._st_history.clear()
         self.integrated_lufs = self.ABS_GATE_LUFS
         self.lra = 0.0
+        self._true_peak_meter.reset()
+        self.true_peak_db = self.ABS_GATE_LUFS
 
     @staticmethod
     def _power_to_lufs(mean_square: float) -> float:
@@ -150,6 +199,8 @@ class LoudnessProcessor:
         if len(left) == 0:
             return
 
+        true_peak = self._true_peak_meter.process(left, right)
+        self.true_peak_db = max(self.ABS_GATE_LUFS, 20.0 * np.log10(max(true_peak, 1e-10)))
         chunk_peak = float(np.max(np.abs(np.concatenate([left, right]))))
         chunk_peak_db = 20.0 * np.log10(max(chunk_peak, 1e-10))
         if chunk_peak_db > self._peak_hold_db:
@@ -162,14 +213,36 @@ class LoudnessProcessor:
         kr = self.kw_r.process(right.astype(np.float64))
         sq = kl * kl + kr * kr
 
-        n = len(sq)
-        if n >= self.shortterm_samples:
-            self._buf_sq[:] = sq[-self.shortterm_samples:]
-            self._filled = self.shortterm_samples
-        else:
-            self._buf_sq = np.roll(self._buf_sq, -n)
-            self._buf_sq[-n:] = sq
-            self._filled = min(self.shortterm_samples, self._filled + n)
+        new_block = False
+        offset = 0
+        while offset < len(sq):
+            count = min(
+                len(sq) - offset,
+                self._block_hop_samples - self._samples_since_block,
+                self._st_hop_samples - self._samples_since_st,
+            )
+            self._buf_sq = np.roll(self._buf_sq, -count)
+            self._buf_sq[-count:] = sq[offset:offset + count]
+            self._filled = min(self.shortterm_samples, self._filled + count)
+            offset += count
+            self._samples_since_block += count
+            self._samples_since_st += count
+
+            if self._samples_since_block == self._block_hop_samples:
+                self._samples_since_block = 0
+                if self._filled >= self.gating_block_samples:
+                    self._integrated_blocks.append(float(self._buf_sq[-self.gating_block_samples:].mean()))
+                    new_block = True
+                    if len(self._integrated_blocks) > 10_000:
+                        self._integrated_blocks = self._integrated_blocks[-5_000:]
+
+            if self._samples_since_st == self._st_hop_samples:
+                self._samples_since_st = 0
+                tail = self._buf_sq if self._filled >= self.shortterm_samples else self._buf_sq[-self._filled:]
+                self._st_history.append(self._power_to_lufs(tail.mean()))
+                if len(self._st_history) > 2_000:
+                    self._st_history = self._st_history[-1_000:]
+                self.lra = self._compute_lra()
 
         m_n = min(self.momentary_samples, self._filled)
         if m_n > 0:
@@ -179,25 +252,8 @@ class LoudnessProcessor:
             tail = self._buf_sq if self._filled >= self.shortterm_samples else self._buf_sq[-self._filled:]
             self.shortterm_lufs = self._power_to_lufs(tail.mean())
 
-        self._samples_since_block += n
-        new_block = False
-        while self._filled >= self.gating_block_samples and self._samples_since_block >= self._block_hop_samples:
-            self._samples_since_block -= self._block_hop_samples
-            self._integrated_blocks.append(float(self._buf_sq[-self.gating_block_samples:].mean()))
-            new_block = True
-            if len(self._integrated_blocks) > 10_000:
-                self._integrated_blocks = self._integrated_blocks[-5_000:]
-
         if new_block:
             self.integrated_lufs = self._compute_integrated()
-
-        self._samples_since_st += n
-        if self._samples_since_st >= self._st_hop_samples:
-            self._samples_since_st = 0
-            self._st_history.append(self.shortterm_lufs)
-            if len(self._st_history) > 2_000:
-                self._st_history = self._st_history[-1_000:]
-            self.lra = self._compute_lra()
 
     def _compute_integrated(self) -> float:
         if not self._integrated_blocks:

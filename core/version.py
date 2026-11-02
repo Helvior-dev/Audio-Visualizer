@@ -5,7 +5,7 @@ Version and repository metadata for Audio Visualizer.
 import re
 from typing import Tuple
 
-__version__ = "2.1.0"
+__version__ = "2.2.0"
 GITHUB_REPO = "Helvior-dev/Audio-Visualizer"
 RELEASES_URL = f"https://github.com/{GITHUB_REPO}/releases"
 LATEST_API_URL = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"

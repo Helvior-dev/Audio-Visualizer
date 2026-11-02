@@ -92,10 +92,12 @@ class AudioCaptureEngine:
         self.last_error = None
         self.is_running = False
         
-        # 1-second circular buffer
+        # 44100-frame circular buffer (less than one second at higher device rates).
         self.buffer_frames = 44100
         self.ring_buffer = np.zeros((self.buffer_frames, 2), dtype=np.float32)
         self.write_index = 0
+        self.total_frames_written = 0
+        self.stream_generation = 0
         
         # Callbacks for subscribers
         self._callbacks: List[Callable[[np.ndarray, int, int], None]] = []
@@ -105,10 +107,9 @@ class AudioCaptureEngine:
         try:
             self.shm = shm.SharedMemory(name=SHM_NAME, create=True, size=bytes_size)
         except FileExistsError:
-            try:
-                self.shm = shm.SharedMemory(name=SHM_NAME, create=False)
-            except Exception:
-                self.shm = None
+            # Another instance owns the fixed-name block. Keep capturing to our
+            # local ring buffer without writing to or unlinking its shared data.
+            self.shm = None
         except Exception:
             self.shm = None
 
@@ -177,6 +178,10 @@ class AudioCaptureEngine:
         self._close_stream()
         self.source = source
         self.last_error = None
+        self.stream_generation += 1
+        self.write_index = 0
+        self.total_frames_written = 0
+        self.ring_buffer.fill(0)
 
         try:
             dev_info = self._resolve_device(source)
@@ -198,26 +203,29 @@ class AudioCaptureEngine:
                                 stereo_samples = samples[:, :2]
 
                             # Write to internal circular buffer
-                            w_idx = self.write_index
-                            end_idx = w_idx + n_frames
+                            write_samples = stereo_samples[-self.buffer_frames:]
+                            write_count = len(write_samples)
+                            w_idx = (self.write_index + n_frames - write_count) % self.buffer_frames
+                            end_idx = w_idx + write_count
                             if end_idx <= self.buffer_frames:
-                                self.ring_buffer[w_idx:end_idx] = stereo_samples
+                                self.ring_buffer[w_idx:end_idx] = write_samples
                             else:
                                 first_part = self.buffer_frames - w_idx
-                                second_part = n_frames - first_part
-                                self.ring_buffer[w_idx:] = stereo_samples[:first_part]
-                                self.ring_buffer[:second_part] = stereo_samples[first_part:]
-                            self.write_index = (w_idx + n_frames) % self.buffer_frames
+                                second_part = write_count - first_part
+                                self.ring_buffer[w_idx:] = write_samples[:first_part]
+                                self.ring_buffer[:second_part] = write_samples[first_part:]
+                            self.write_index = (w_idx + write_count) % self.buffer_frames
+                            self.total_frames_written += n_frames
 
                             # Write to shared memory if active
                             if self.shm is not None:
                                 try:
                                     buf_offset = 32
                                     if end_idx <= self.buffer_frames:
-                                        self.shm.buf[buf_offset + w_idx * 8 : buf_offset + end_idx * 8] = stereo_samples.tobytes()
+                                        self.shm.buf[buf_offset + w_idx * 8 : buf_offset + end_idx * 8] = write_samples.tobytes()
                                     else:
-                                        self.shm.buf[buf_offset + w_idx * 8 :] = stereo_samples[:first_part].tobytes()
-                                        self.shm.buf[buf_offset : buf_offset + second_part * 8] = stereo_samples[first_part:].tobytes()
+                                        self.shm.buf[buf_offset + w_idx * 8 :] = write_samples[:first_part].tobytes()
+                                        self.shm.buf[buf_offset : buf_offset + second_part * 8] = write_samples[first_part:].tobytes()
                                     self._write_header(1)
                                 except Exception:
                                     pass
@@ -245,21 +253,36 @@ class AudioCaptureEngine:
             self.is_running = True
         except Exception as e:
             self.last_error = str(e)
+            self._close_stream()
             print(f"Failed to open audio stream: {e}")
-            self.is_running = False
 
     def _close_stream(self):
         if self.stream is not None:
             try:
                 self.stream.stop_stream()
+            except Exception:
+                pass
+            try:
                 self.stream.close()
             except Exception:
                 pass
             self.stream = None
         self.is_running = False
+        self._write_header(0)
 
     def create_reader(self, chunk_size: int = 1024) -> "AudioCaptureReader":
         return AudioCaptureReader(self, chunk_size=chunk_size)
+
+    def get_latest_frames(self, num_samples: int) -> Tuple[np.ndarray, int, int]:
+        """Return a copy of the latest frames from the current audio source."""
+        count = min(max(0, num_samples), self.buffer_frames, self.total_frames_written)
+        start = (self.write_index - count) % self.buffer_frames
+        if start + count <= self.buffer_frames:
+            frames = self.ring_buffer[start:start + count].copy()
+        else:
+            first = self.buffer_frames - start
+            frames = np.vstack((self.ring_buffer[start:], self.ring_buffer[:count - first]))
+        return frames, self.rate, self.channels
 
     def change_source(self, new_source: AudioSource):
         """Switch audio capture device without restarting the app."""
@@ -289,21 +312,28 @@ class AudioCaptureReader:
         self.engine = engine
         self.chunk_size = chunk_size
         self.last_read_index = engine.write_index
+        self.last_frame = engine.total_frames_written
+        self.stream_generation = engine.stream_generation
 
     def read_chunk(self) -> Optional[Tuple[np.ndarray, int, int]]:
-        curr_w = self.engine.write_index
-        r_idx = self.last_read_index
-        total_buf = self.engine.buffer_frames
+        if self.stream_generation != self.engine.stream_generation:
+            self.stream_generation = self.engine.stream_generation
+            self.last_frame = 0
+            self.last_read_index = 0
 
-        if curr_w >= r_idx:
-            avail = curr_w - r_idx
-        else:
-            avail = (total_buf - r_idx) + curr_w
+        current_frame = self.engine.total_frames_written
+        total_buf = self.engine.buffer_frames
+        max_read = total_buf // 2
+        avail = current_frame - self.last_frame
+        if avail > max_read:
+            self.last_frame = current_frame - max_read
+            avail = max_read
 
         if avail < 32:
             return None
 
-        take_frames = min(avail, total_buf // 2)
+        r_idx = self.last_frame % total_buf
+        take_frames = min(avail, max_read)
         end_idx = (r_idx + take_frames) % total_buf
 
         if r_idx + take_frames <= total_buf:
@@ -313,5 +343,6 @@ class AudioCaptureReader:
             second = take_frames - first
             chunk = np.vstack([self.engine.ring_buffer[r_idx:], self.engine.ring_buffer[:second]])
 
+        self.last_frame += take_frames
         self.last_read_index = end_idx
         return chunk, self.engine.rate, self.engine.channels

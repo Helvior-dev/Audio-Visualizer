@@ -12,6 +12,8 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtGui import QFont, QIcon, QPixmap, QDesktopServices
 
 from core.version import RELEASES_URL, __version__
+from core.config_manager import AppConfig
+from ..theme import palette
 
 ICON_PNG = Path(__file__).resolve().parent.parent.parent / "assets" / "icon.png"
 
@@ -24,66 +26,20 @@ class UpdateDialog(QDialog):
         super().__init__(parent)
         self.release_info = release_info
         self.is_preview = is_preview
+        self.theme_colors = palette(getattr(parent, "config", AppConfig()))
 
         self.setWindowTitle("Доступно обновление / New Version Available" if not is_preview else "[Preview] Окно обновления")
         self.setFixedSize(520, 420)
-        self.setStyleSheet("""
-            QDialog {
-                background-color: #14141A;
-                color: #DCDCE6;
-                font-family: 'Segoe UI', Arial, sans-serif;
-                border: 1px solid #282836;
-                border-radius: 8px;
-            }
-            QLabel {
-                color: #D8D8E4;
-            }
-            QTextBrowser {
-                background-color: #181822;
-                color: #C0C0D0;
-                border: 1px solid #242430;
-                border-radius: 6px;
-                padding: 10px;
-                font-family: 'Segoe UI', Arial, sans-serif;
-                font-size: 11px;
-                line-height: 1.4;
-            }
-            QScrollBar:vertical {
-                background: #121218;
-                width: 6px;
-                margin: 0px;
-                border-radius: 3px;
-            }
-            QScrollBar::handle:vertical {
-                background: #282838;
-                min-height: 16px;
-                border-radius: 3px;
-            }
-            QScrollBar::handle:vertical:hover {
-                background: #3E3E56;
-            }
-            QPushButton {
-                background-color: #20202C;
-                color: #FFFFFF;
-                border: 1px solid #36364A;
-                border-radius: 5px;
-                padding: 7px 14px;
-                font-weight: bold;
-                font-size: 11px;
-            }
-            QPushButton:hover {
-                background-color: #2A2A3C;
-                border-color: #58A6FF;
-            }
-            QPushButton.download-btn {
-                background-color: #1F6FEB;
-                border: 1px solid #388BFD;
-                color: #FFFFFF;
-            }
-            QPushButton.download-btn:hover {
-                background-color: #388BFD;
-                border-color: #79B8FF;
-            }
+        colors = self.theme_colors
+        self.setStyleSheet(f"""
+            QDialog {{ background: {colors['root']}; color: {colors['text']};
+                font-family: 'Cascadia Mono', Consolas, monospace; }}
+            QLabel {{ color: {colors['text']}; }}
+            QTextBrowser {{ background: {colors['card']}; color: {colors['text']};
+                border: 1px solid {colors['border']}; padding: 10px; }}
+            QPushButton {{ background: {colors['card']}; color: {colors['text']};
+                border: 1px solid {colors['border']}; padding: 7px 14px; }}
+            QPushButton:hover {{ color: {colors['accent']}; border-color: {colors['accent']}; }}
         """)
 
         self._init_ui()
@@ -109,16 +65,15 @@ class UpdateDialog(QDialog):
         title_box = QVBoxLayout()
         title_box.setSpacing(3)
 
-        title_text = "🎉 Вышла новая версия!" if not self.is_preview else "🧪 Предпросмотр окна обновления"
+        title_text = "Доступна новая версия" if not self.is_preview else "Предпросмотр окна обновления"
         main_title = QLabel(title_text, self)
-        main_title.setFont(QFont("Segoe UI", 13, QFont.Weight.Bold))
-        main_title.setStyleSheet("color: #FFFFFF;")
+        main_title.setFont(QFont("Cascadia Mono", 13, QFont.Weight.Bold))
         title_box.addWidget(main_title)
 
         cur_v = self.release_info.get("current_version", __version__)
         new_v = self.release_info.get("tag_name", "vNext")
 
-        ver_badge = QLabel(f"Установлена: <span style='color: #888;'>v{cur_v.lstrip('v')}</span>  ➔  Доступна: <span style='color: #58A6FF; font-weight: bold;'>{new_v}</span>", self)
+        ver_badge = QLabel(f"Установлена: <span style='color: {self.theme_colors['muted']};'>v{cur_v.lstrip('v')}</span>  ➔  Доступна: <span style='color: {self.theme_colors['accent']}; font-weight: bold;'>{new_v}</span>", self)
         ver_badge.setStyleSheet("font-size: 11px;")
         title_box.addWidget(ver_badge)
 
@@ -130,8 +85,8 @@ class UpdateDialog(QDialog):
         rel_name = self.release_info.get("name", "")
         if rel_name and rel_name != new_v:
             name_lbl = QLabel(rel_name, self)
-            name_lbl.setFont(QFont("Segoe UI", 10, QFont.Weight.Bold))
-            name_lbl.setStyleSheet("color: #E6EDF3; padding-top: 2px;")
+            name_lbl.setFont(QFont("Cascadia Mono", 10, QFont.Weight.Bold))
+            name_lbl.setStyleSheet(f"color: {self.theme_colors['text']}; padding-top: 2px;")
             name_lbl.setWordWrap(True)
             layout.addWidget(name_lbl)
 
@@ -155,7 +110,7 @@ class UpdateDialog(QDialog):
 
         btn_layout.addStretch(1)
 
-        open_btn = QPushButton("🚀 Перейти к релизу и скачать", self)
+        open_btn = QPushButton("Открыть страницу релиза", self)
         open_btn.setProperty("class", "download-btn")
         open_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         open_btn.clicked.connect(self._open_release_url)

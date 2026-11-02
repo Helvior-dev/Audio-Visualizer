@@ -27,8 +27,8 @@ from OpenGL.GL import (
 )
 from core.audio_worker import AudioWorker
 from core.gl_utils import create_program
-from core.config_manager import load_config
-from ..widgets.help_overlay import HelpOverlay
+from core.config_manager import AppConfig
+from ..theme import palette, rgb, apply_meter_header, popout_icon
 
 MAX_COLUMNS = 2560
 SAMPLES_PER_SLICE = 180  # ~245 slices per second for smooth, readable scrolling speed
@@ -53,19 +53,6 @@ void main() {
     out_color = vec4(frag_color, 1.0);
 }
 """
-
-HELP_LINES = [
-    "WAVEFORM",
-    "",
-    "Displays a continuous audio history waveform scrolling from right to left in real time.",
-    "",
-    "• Amplitude: Symmetric height reflects dynamic audio transients and loudness.",
-    "• Spectral Pitch & Theme Color: Slices are dynamically colored by frequency and active theme:",
-    "    - Bass & Kick drums (20 - 180 Hz): Deep Crimson / Red-Pink",
-    "    - Midrange & Vocals (180 - 1.8 kHz): Theme Accent / Warm Golden Peach",
-    "    - Treble & Hi-hats (1.8k - 14 kHz): Sky Blue / Cyan / Violet",
-]
-
 
 def pitch_to_rgb(dominant_freq: float, level: float, accent_rgb=(0.35, 0.65, 1.0)) -> tuple[float, float, float]:
     """Calculate RGB color based on dominant pitch, volume level, and active theme accent."""
@@ -107,8 +94,9 @@ def pitch_to_rgb(dominant_freq: float, level: float, accent_rgb=(0.35, 0.65, 1.0
 class WaveformWidget(QOpenGLWidget):
     undock_requested = pyqtSignal()
 
-    def __init__(self, audio_worker: AudioWorker, parent=None):
+    def __init__(self, audio_worker: AudioWorker, parent=None, config: AppConfig | None = None):
         super().__init__(parent)
+        self.config = config if config is not None else AppConfig()
         self.audio_worker = audio_worker
         self.reader = audio_worker.create_reader(chunk_size=128)
         self.is_paused = False
@@ -128,10 +116,8 @@ class WaveformWidget(QOpenGLWidget):
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self.setMinimumSize(200, 160)
 
-        # Header controls & Help
+        # Docked header controls
         self._init_header_controls()
-        self.help_overlay = HelpOverlay("WAVEFORM", HELP_LINES, self)
-        self.help_overlay.hide()
 
         # OpenGL handles
         self.program = None
@@ -171,16 +157,9 @@ class WaveformWidget(QOpenGLWidget):
         h_layout.addWidget(self.title_lbl)
         h_layout.addStretch(1)
 
-        self.help_btn = QToolButton(self.header_frame)
-        self.help_btn.setText("?")
-        self.help_btn.setToolTip("Show meter explanations")
-        self.help_btn.setFixedSize(18, 18)
-        self.help_btn.clicked.connect(self._toggle_help)
-        h_layout.addWidget(self.help_btn)
-
         self.undock_btn = QToolButton(self.header_frame)
-        self.undock_btn.setText("↗")
-        self.undock_btn.setToolTip("Pop-out into floating window")
+        self.undock_btn.setIcon(popout_icon("#91c5ff"))
+        self.undock_btn.setToolTip("Move to a separate window")
         self.undock_btn.setFixedSize(18, 18)
         self.undock_btn.clicked.connect(self.undock_requested.emit)
         h_layout.addWidget(self.undock_btn)
@@ -193,26 +172,17 @@ class WaveformWidget(QOpenGLWidget):
 
     def set_standalone_mode(self, is_standalone: bool):
         self.is_standalone = is_standalone
-        self.undock_btn.setVisible(not is_standalone)
+        self.header_frame.setVisible(not is_standalone)
+        self.update()
         if is_standalone:
             if not self.timer.isActive():
                 self.timer.start()
         else:
             self.timer.stop()
 
-    def _toggle_help(self):
-        if self.help_overlay.isVisible():
-            self.help_overlay.hide()
-        else:
-            self.help_overlay.setGeometry(self.rect())
-            self.help_overlay.show()
-            self.help_overlay.raise_()
-
     def resizeEvent(self, event):
         super().resizeEvent(event)
         self.header_frame.setGeometry(0, 0, self.width(), 26)
-        if self.help_overlay.isVisible():
-            self.help_overlay.setGeometry(self.rect())
 
     def initializeGL(self):
         glEnable(GL_BLEND)
@@ -325,20 +295,24 @@ class WaveformWidget(QOpenGLWidget):
 
         return verts.reshape(-1), num_cols * 2
 
+    def apply_theme(self, colors: dict[str, str]):
+        apply_meter_header(self, colors)
+
     def paintGL(self):
-        cfg = load_config()
+        cfg = self.config
+        colors = palette(cfg)
         self._update_audio()
 
         w = self.width()
         h = self.height()
 
-        glClearColor(0.043, 0.043, 0.051, 1.0)
+        glClearColor(*rgb(colors['root']), 1.0)
         glClear(GL_COLOR_BUFFER_BIT)
 
         if not self.program or not self.vao:
             return
 
-        accent_hex = getattr(cfg, "accent_color", "#58A6FF").lstrip("#")
+        accent_hex = colors['accent'].lstrip("#")
         try:
             ar = int(accent_hex[0:2], 16) / 255.0
             ag = int(accent_hex[2:4], 16) / 255.0

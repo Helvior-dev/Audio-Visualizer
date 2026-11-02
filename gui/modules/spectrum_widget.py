@@ -27,8 +27,8 @@ from OpenGL.GL import (
 )
 from core.audio_worker import AudioWorker
 from core.gl_utils import create_program
-from core.config_manager import load_config
-from ..widgets.help_overlay import HelpOverlay
+from core.config_manager import AppConfig
+from ..theme import palette, rgb, apply_meter_header, popout_icon
 
 FFT_SIZE = 4096
 NUM_BARS = 320
@@ -82,26 +82,15 @@ void main() {
 }
 """
 
-HELP_LINES = [
-    "SPECTRUM ANALYZER",
-    "",
-    "Splits sound into individual frequencies -- bass on the left, treble on the right.",
-    "",
-    "• Continuous wave: Fluid logarithmic energy curve colored by intensity (purple -> magenta -> orange).",
-    "• Top line: Transient peak-hold envelope that falls smoothly.",
-    "• Hover over the display to see the exact dB level, frequency, and nearest musical note.",
-]
-
-
 def make_log_bin_edges(num_bars: int, fft_size: int, min_bin: float = 1.0) -> np.ndarray:
     max_bin = fft_size // 2
     return np.logspace(np.log10(min_bin), np.log10(max_bin), num_bars + 1)
 
 
-def colormap(level: np.ndarray, accent_rgb=(0.75, 0.15, 0.55)) -> np.ndarray:
-    dark_purple = np.array([0.10, 0.02, 0.15])
+def colormap(level: np.ndarray, accent_rgb=(0.75, 0.15, 0.55), dark_rgb=(0.10, 0.02, 0.15)) -> np.ndarray:
+    dark_purple = np.array(dark_rgb)
     mid_accent = np.array(accent_rgb)
-    orange = np.array([1.00, 0.55, 0.15])
+    orange = mid_accent * 0.55 + 0.45
 
     level = np.clip(level, 0.0, 1.0)
     t_low = np.clip(level * 2.0, 0.0, 1.0)[:, None]
@@ -130,8 +119,10 @@ def freq_to_note(freq_hz: float) -> str:
 class SpectrumWidget(QOpenGLWidget):
     undock_requested = pyqtSignal()
 
-    def __init__(self, audio_worker: AudioWorker, parent=None):
+    def __init__(self, audio_worker: AudioWorker, parent=None, config: AppConfig | None = None):
         super().__init__(parent)
+        self.config = config if config is not None else AppConfig()
+        self.is_standalone = False
         self.audio_worker = audio_worker
         self.reader = audio_worker.create_reader(chunk_size=256)
         self.sample_rate = 44100
@@ -153,10 +144,8 @@ class SpectrumWidget(QOpenGLWidget):
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self.setMinimumSize(280, 200)
 
-        # Header controls & Help
+        # Docked header controls
         self._init_header_controls()
-        self.help_overlay = HelpOverlay("SPECTRUM ANALYZER", HELP_LINES, self)
-        self.help_overlay.hide()
 
         # OpenGL handles
         self.mesh_program = None
@@ -179,6 +168,13 @@ class SpectrumWidget(QOpenGLWidget):
         bar_center_bin = (self.bin_edges[:-1] + self.bin_edges[1:]) / 2.0
         self.bar_freqs_hz = bar_center_bin * bin_hz
         self._fft_bin_axis = np.arange(FFT_SIZE // 2 + 1, dtype=np.float64)
+        self._visible_bars = self.bar_freqs_hz <= MAX_FREQ_HZ
+        frequencies = np.maximum(self.bar_freqs_hz[self._visible_bars], MIN_FREQ_HZ)
+        normalized = np.clip(
+            np.log10(frequencies / MIN_FREQ_HZ) / np.log10(MAX_FREQ_HZ / MIN_FREQ_HZ),
+            0.0, 1.0,
+        )
+        self._visible_x_coords = (normalized * 2.0 - 1.0).astype(np.float32)
 
     def _init_header_controls(self):
         self.header_frame = QFrame(self)
@@ -209,16 +205,9 @@ class SpectrumWidget(QOpenGLWidget):
         h_layout.addWidget(self.title_lbl)
         h_layout.addStretch(1)
 
-        self.help_btn = QToolButton(self.header_frame)
-        self.help_btn.setText("?")
-        self.help_btn.setToolTip("Show meter explanations")
-        self.help_btn.setFixedSize(18, 18)
-        self.help_btn.clicked.connect(self._toggle_help)
-        h_layout.addWidget(self.help_btn)
-
         self.undock_btn = QToolButton(self.header_frame)
-        self.undock_btn.setText("↗")
-        self.undock_btn.setToolTip("Pop-out into floating window")
+        self.undock_btn.setIcon(popout_icon("#91c5ff"))
+        self.undock_btn.setToolTip("Move to a separate window")
         self.undock_btn.setFixedSize(18, 18)
         self.undock_btn.clicked.connect(self.undock_requested.emit)
         h_layout.addWidget(self.undock_btn)
@@ -229,26 +218,17 @@ class SpectrumWidget(QOpenGLWidget):
 
     def set_standalone_mode(self, is_standalone: bool):
         self.is_standalone = is_standalone
-        self.undock_btn.setVisible(not is_standalone)
+        self.header_frame.setVisible(not is_standalone)
+        self.update()
         if is_standalone:
             if not self.timer.isActive():
                 self.timer.start()
         else:
             self.timer.stop()
 
-    def _toggle_help(self):
-        if self.help_overlay.isVisible():
-            self.help_overlay.hide()
-        else:
-            self.help_overlay.setGeometry(self.rect())
-            self.help_overlay.show()
-            self.help_overlay.raise_()
-
     def resizeEvent(self, event):
         super().resizeEvent(event)
         self.header_frame.setGeometry(0, 0, self.width(), 26)
-        if self.help_overlay.isVisible():
-            self.help_overlay.setGeometry(self.rect())
 
     def mouseMoveEvent(self, event):
         self.mouse_pos = event.position()
@@ -369,11 +349,10 @@ class SpectrumWidget(QOpenGLWidget):
         self.peak_db = np.maximum(self.peak_db, self.smoothed_db)
 
     def _build_continuous_mesh_vertices(self, accent_rgb=(0.75, 0.15, 0.55)) -> tuple[np.ndarray, int]:
-        visible = self.bar_freqs_hz <= MAX_FREQ_HZ
-        level = np.clip((self.smoothed_db[visible] - DB_FLOOR) / (DB_CEIL - DB_FLOOR), 0.0, 1.0)
-        colors = colormap(level, accent_rgb)
+        level = np.clip((self.smoothed_db[self._visible_bars] - DB_FLOOR) / (DB_CEIL - DB_FLOOR), 0.0, 1.0)
+        colors = colormap(level, accent_rgb, rgb(palette(self.config)['grid']))
 
-        x_coords = np.array([self._freq_to_x_ndc(f) for f in self.bar_freqs_hz[visible]], dtype=np.float32)
+        x_coords = self._visible_x_coords
         y_top = (-1.0 + level * 2.0).astype(np.float32)
 
         total_pts = len(x_coords)
@@ -391,9 +370,8 @@ class SpectrumWidget(QOpenGLWidget):
         return verts.reshape(-1), total_pts * 2
 
     def _build_envelope_vertices(self) -> tuple[np.ndarray, int]:
-        visible = self.bar_freqs_hz <= MAX_FREQ_HZ
-        level = np.clip((self.peak_db[visible] - DB_FLOOR) / (DB_CEIL - DB_FLOOR), 0.0, 1.0)
-        x_centers = np.array([self._freq_to_x_ndc(f) for f in self.bar_freqs_hz[visible]], dtype=np.float32)
+        level = np.clip((self.peak_db[self._visible_bars] - DB_FLOOR) / (DB_CEIL - DB_FLOOR), 0.0, 1.0)
+        x_centers = self._visible_x_coords
         y = (-1.0 + level * 2.0).astype(np.float32)
 
         count = len(x_centers)
@@ -402,30 +380,34 @@ class SpectrumWidget(QOpenGLWidget):
         verts[1::2] = y
         return verts, count
 
+    def apply_theme(self, colors: dict[str, str]):
+        apply_meter_header(self, colors)
+
     def paintGL(self):
         now = time.monotonic()
         dt = max(1e-4, min(0.1, now - self.last_time))
         self.last_time = now
 
-        cfg = load_config()
+        cfg = self.config
         self._update_audio(dt)
 
         w = self.width()
         h = self.height()
-        top_offset = 26
+        top_offset = 8 if self.is_standalone else 26
         bottom_offset = 20
         plot_h = max(1.0, h - top_offset - bottom_offset)
         base_y = top_offset + plot_h
 
         # 1. Pure Pitch-Black Background (#0b0b0d)
-        glClearColor(0.043, 0.043, 0.051, 1.0)
+        colors = palette(cfg)
+        glClearColor(*rgb(colors['root']), 1.0)
         glClear(GL_COLOR_BUFFER_BIT)
 
         if not self.mesh_program or not self.mesh_vao:
             return
 
         # Parse accent RGB
-        accent_hex = getattr(cfg, "accent_color", "#FF4570").lstrip("#")
+        accent_hex = colors['accent'].lstrip("#")
         try:
             ar = int(accent_hex[0:2], 16) / 255.0
             ag = int(accent_hex[2:4], 16) / 255.0
@@ -446,7 +428,7 @@ class SpectrumWidget(QOpenGLWidget):
         env_verts, env_count = self._build_envelope_vertices()
         if env_count > 1:
             glUseProgram(self.line_program)
-            glUniform4f(self.line_color_loc, 0.98, 0.55, 0.65, 0.9)
+            glUniform4f(self.line_color_loc, *rgb(colors['fill']), 0.9)
             glBindVertexArray(self.line_vao)
             glBindBuffer(GL_ARRAY_BUFFER, self.line_vbo)
             glBufferSubData(GL_ARRAY_BUFFER, 0, env_verts.nbytes, env_verts)
@@ -476,7 +458,7 @@ class SpectrumWidget(QOpenGLWidget):
                         tooltip = f"{db_val:.1f} dB   {freq:.0f} Hz   {note}"
 
                         # Subtle Crosshair line
-                        painter.setPen(QPen(QColor(250, 140, 170, 140), 1, Qt.PenStyle.DashLine))
+                        painter.setPen(QPen(QColor(colors['accent']), 1, Qt.PenStyle.DashLine))
                         painter.drawLine(QPointF(mx, top_offset), QPointF(mx, base_y))
                         painter.drawLine(QPointF(0, my), QPointF(w, my))
 
@@ -487,8 +469,8 @@ class SpectrumWidget(QOpenGLWidget):
                         bx = min(w - tw - 8, max(8.0, mx + 10))
                         by = max(top_offset + 4.0, my - 24)
 
-                        painter.setBrush(QColor(18, 18, 26, 235))
-                        painter.setPen(QPen(QColor(250, 140, 170, 220), 1))
+                        painter.setBrush(QColor(colors['card']))
+                        painter.setPen(QPen(QColor(colors['border']), 1))
                         painter.drawRoundedRect(QRectF(bx, by, tw, 20), 4, 4)
 
                         painter.setPen(QColor(245, 245, 255))

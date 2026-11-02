@@ -12,31 +12,16 @@ from PyQt6.QtCore import Qt, QPointF, QRectF
 from PyQt6.QtGui import QPainter, QColor, QFont, QPen, QPolygonF, QPainterPath
 from ..base_meter_widget import BaseMeterWidget
 from core.audio_worker import AudioWorker
-from core.config_manager import load_config
+from core.config_manager import AppConfig
+from ..theme import palette
 
 HISTORY_POINTS = 1024
 CORR_SMOOTHING_PER_SEC = 9.0
 
-HELP_LINES = [
-    "STEREOMETER",
-    "",
-    "Shows the shape of your stereo sound as a cloud of dots.",
-    "",
-    "• Vertical axis (MID): Monophonic energy (center channel).",
-    "• Horizontal axis (SIDE): Stereo difference (stereo width).",
-    "• Tall thin cloud: Mono-heavy, centered mix.",
-    "• Wide round cloud: Spacious stereo field.",
-    "",
-    "CORRELATION (CORR):",
-    "• +1.00: Perfect mono compatibility (identical L/R).",
-    "•  0.00: Wide, uncorrelated stereo.",
-    "• -1.00: Complete phase cancellation (out of phase).",
-]
-
-
 class VectorscopeWidget(BaseMeterWidget):
-    def __init__(self, audio_worker: AudioWorker, parent=None):
-        super().__init__("STEREOMETER", HELP_LINES, parent)
+    def __init__(self, audio_worker: AudioWorker, parent=None, config: AppConfig | None = None):
+        super().__init__("STEREOMETER", parent)
+        self.config = config if config is not None else AppConfig()
         self.audio_worker = audio_worker
         self.reader = audio_worker.create_reader(chunk_size=256)
         self.points = np.zeros((HISTORY_POINTS, 2), dtype=np.float32)
@@ -49,11 +34,12 @@ class VectorscopeWidget(BaseMeterWidget):
         dt = max(0.001, min(0.1, now - self.last_time))
         self.last_time = now
 
-        cfg = load_config()
+        cfg = self.config
+        colors = palette(cfg)
 
         w = self.width()
         h = self.height()
-        top_offset = 26
+        top_offset = 8 if self.is_standalone else 26
 
         # 1. Read exact new frames since last tick
         if not self.is_paused:
@@ -107,7 +93,7 @@ class VectorscopeWidget(BaseMeterWidget):
         radius = (side_len / 2.0) * 0.78
 
         # 3. Draw Diamond Guide & Axes
-        diag_pen = QPen(QColor(71, 76, 87), max(1.0, 1.2 * scale_fac))
+        diag_pen = QPen(QColor(colors['border']), max(1.0, 1.2 * scale_fac))
         painter.setPen(diag_pen)
 
         p_top = QPointF(cx, cy - radius)
@@ -122,7 +108,7 @@ class VectorscopeWidget(BaseMeterWidget):
         painter.drawLine(p_left, p_top)
 
         # Cross & diagonal axes
-        guide_pen = QPen(QColor(42, 45, 52), max(1.0, 1.0 * scale_fac), Qt.PenStyle.DashLine)
+        guide_pen = QPen(QColor(colors['grid']), max(1.0, 1.0 * scale_fac), Qt.PenStyle.DashLine)
         painter.setPen(guide_pen)
         painter.drawLine(p_left, p_right)
         painter.drawLine(p_top, p_bottom)
@@ -134,7 +120,7 @@ class VectorscopeWidget(BaseMeterWidget):
         # Labels: MID, SIDE, L, R
         label_font_size = max(8, int(8.5 * scale_fac))
         painter.setFont(QFont("Segoe UI", label_font_size, QFont.Weight.Bold))
-        painter.setPen(QColor(140, 140, 153))
+        painter.setPen(QColor(colors['muted']))
 
         label_offset = 6 * scale_fac
         painter.drawText(int(cx - 12 * scale_fac), int(cy - radius - label_offset), "MID")
@@ -143,7 +129,7 @@ class VectorscopeWidget(BaseMeterWidget):
         painter.drawText(int(cx + radius + 8 * scale_fac), int(cy + 5 * scale_fac), "R")
 
         # 4. Point Cloud in Active Theme Accent Color
-        accent_col = QColor(getattr(cfg, "accent_color", "#58A6FF"))
+        accent_col = QColor(colors['accent'])
         pt_color = QColor(
             min(255, int(accent_col.red() * 0.85 + 40)),
             min(255, int(accent_col.green() * 0.85 + 40)),
@@ -154,7 +140,9 @@ class VectorscopeWidget(BaseMeterWidget):
         pxs = cx + self.points[:, 0] * (radius * 0.92)
         pys = cy - self.points[:, 1] * (radius * 0.92)
 
-        polygon = QPolygonF([QPointF(float(pxs[i]), float(pys[i])) for i in range(HISTORY_POINTS)])
+        # Keep the full audio history but draw every other point to reduce the
+        # per-frame QPainter cost without lowering the suite's frame rate.
+        polygon = QPolygonF([QPointF(float(pxs[i]), float(pys[i])) for i in range(0, HISTORY_POINTS, 2)])
 
         pt_size = max(2.0, min(3.8, 2.2 * scale_fac))
         pt_pen = QPen(pt_color, pt_size)
@@ -173,8 +161,8 @@ class VectorscopeWidget(BaseMeterWidget):
         bar_path = QPainterPath()
         bar_path.addRoundedRect(bar_rect, corner_r, corner_r)
 
-        painter.fillPath(bar_path, QColor(36, 36, 44))
-        painter.setPen(QPen(QColor(55, 55, 65), 1))
+        painter.fillPath(bar_path, QColor(colors['grid']))
+        painter.setPen(QPen(QColor(colors['border']), 1))
         painter.drawPath(bar_path)
 
         mid_x = cx
@@ -193,7 +181,7 @@ class VectorscopeWidget(BaseMeterWidget):
         # Correlation Value Text
         corr_font_size = max(8, int(8.5 * scale_fac))
         painter.setFont(QFont("Segoe UI", corr_font_size, QFont.Weight.Bold))
-        painter.setPen(QColor(210, 210, 220))
+        painter.setPen(QColor(colors['text']))
         corr_text = f"CORR {self.displayed_correlation:+.2f}"
         metrics = painter.fontMetrics()
         tw = metrics.horizontalAdvance(corr_text)

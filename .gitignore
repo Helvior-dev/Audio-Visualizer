@@ -74,4 +74,7 @@ Desktop.ini
 
 # App data & configs (stored in %APPDATA%/Logovo-Dushnil/Audio-Visualizer)
 config.json
-*.tmp
+
+# Local agent instructions and development state
+AGENTS.md
+PROJECT_STATE.md

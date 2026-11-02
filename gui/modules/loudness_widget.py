@@ -1,14 +1,7 @@
 """
 Loudness & Level Meter Module (PyQt6).
-Professional Loudness widget & suite layout:
-- Left: Vertical meter group:
-    • Scale markings: 0 -, 6 -, 12 -, 24 -, 36 -, 50 -
-    • Dual-channel immediate Peak bars (L and R) with fast attack & peak-hold ticks
-    • Perceived Loudness (LUFS / RMS) bar with peak-hold tick
-    • Dynamic floating badge (-xx.xLUFS / -xx.xRMS) tracking level with compact fixed width
-- Right (when card width allows):
-    • Modern suite metrics panel: SHORT-TERM, INTEGRATED, LRA, PEAK
-- Click anywhere to cycle measurement modes (LUFS M, LUFS S, RMS Fast, RMS Slow)
+Dual-channel sample-peak bars, a LUFS/RMS bar and a statistics panel with
+short-term/integrated LUFS, LRA and True Peak. Click to cycle modes.
 """
 
 import time
@@ -18,7 +11,8 @@ from PyQt6.QtGui import QPainter, QColor, QFont, QPen, QBrush
 from ..base_meter_widget import BaseMeterWidget
 from core.dsp import LoudnessProcessor, DB_MIN, DB_MAX
 from core.audio_worker import AudioWorker
-from core.config_manager import load_config
+from core.config_manager import AppConfig
+from ..theme import palette
 
 DB_MIN_METER = -60.0
 DB_MAX_METER = 0.0
@@ -33,19 +27,6 @@ MODES = [
     {"name": "RMS (Fast +3dB)", "unit": "RMS", "key": "rms_fast_3"},
     {"name": "RMS (Slow +3dB)", "unit": "RMS", "key": "rms_slow_3"},
 ]
-
-HELP_LINES = [
-    "LOUDNESS & PEAK METERS",
-    "",
-    "Displays perceived loudness according to standard EBU R128 / ITU-R BS.1770-4.",
-    "",
-    "• LEFT BARS (PEAK L/R): Immediate peak levels with peak-hold ticks.",
-    "• RIGHT BAR (LOUDNESS): Perceived loudness (LUFS) or signal power (RMS).",
-    "• FLOATING BADGE: Live loudness readout dynamically tracking current level.",
-    "• STATS PANEL: Live Short-Term, Integrated, LRA, and Max Peak values.",
-    "• CLICK ANYWHERE: Cycle measurement modes (LUFS M, LUFS S, RMS Fast, RMS Slow).",
-]
-
 
 class ChannelBallistics:
     ATTACK_PER_SEC = 220.0
@@ -81,8 +62,9 @@ class ChannelBallistics:
 
 
 class LoudnessWidget(BaseMeterWidget):
-    def __init__(self, audio_worker: AudioWorker, parent=None):
-        super().__init__("LOUDNESS", HELP_LINES, parent)
+    def __init__(self, audio_worker: AudioWorker, parent=None, config: AppConfig | None = None):
+        super().__init__("LOUDNESS", parent)
+        self.config = config if config is not None else AppConfig()
         self.audio_worker = audio_worker
         self.reader = audio_worker.create_reader(chunk_size=256)
         self.loudness_proc = LoudnessProcessor(44100)
@@ -124,7 +106,8 @@ class LoudnessWidget(BaseMeterWidget):
         dt = max(0.001, min(0.1, now - self.last_time))
         self.last_time = now
 
-        cfg = load_config()
+        cfg = self.config
+        colors = palette(cfg)
 
         # Read audio chunk
         if not self.is_paused:
@@ -170,18 +153,18 @@ class LoudnessWidget(BaseMeterWidget):
 
         w = self.width()
         h = self.height()
-        top_offset = 32.0
+        top_offset = 8.0 if self.is_standalone else 32.0
         bottom_offset = 16.0
 
         y_top = top_offset + 4.0
         y_bot = h - bottom_offset
         track_h = y_bot - y_top
 
-        track_bg_color = QColor(18, 19, 23)
-        accent_hex = getattr(cfg, "accent_color", "#9BB3CE")
+        track_bg_color = QColor(colors['grid'])
+        accent_hex = colors['accent']
         bar_fill_color = QColor(accent_hex)
-        peak_hold_color = QColor(215, 230, 248)
-        text_muted_color = QColor(140, 144, 156)
+        peak_hold_color = QColor(colors['text'])
+        text_muted_color = QColor(colors['muted'])
 
         scale_num_w = 20.0
         tick_len = 6.0
@@ -297,14 +280,14 @@ class LoudnessWidget(BaseMeterWidget):
             panel_w = w - panel_x - 12.0
             if panel_w >= 100.0:
                 stats = [
-                    ("SHORT-TERM", f"{self.loudness_proc.shortterm_lufs:.1f} LUFS" if self.loudness_proc.shortterm_lufs > -69.0 else "--- LUFS", QColor(115, 200, 242)),
-                    ("INTEGRATED", f"{self.loudness_proc.integrated_lufs:.1f} LUFS" if self.loudness_proc.integrated_lufs > -69.0 else "--- LUFS", QColor(240, 242, 250)),
-                    ("RANGE (LRA)", f"{self.loudness_proc.lra:.1f} LU", QColor(155, 160, 175)),
-                    ("MAX PEAK", f"{self.loudness_proc.peak_db:.1f} dBFS" if self.loudness_proc.peak_db > -69.0 else "--- dBFS", QColor(235, 75, 65) if self.loudness_proc.peak_db > -0.5 else QColor(215, 220, 230)),
+                    ("SHORT-TERM", f"{self.loudness_proc.shortterm_lufs:.1f} LUFS" if self.loudness_proc.shortterm_lufs > -69.0 else "--- LUFS", QColor(colors['fill'])),
+                    ("INTEGRATED", f"{self.loudness_proc.integrated_lufs:.1f} LUFS" if self.loudness_proc.integrated_lufs > -69.0 else "--- LUFS", QColor(colors['text'])),
+                    ("RANGE (LRA)", f"{self.loudness_proc.lra:.1f} LU", QColor(colors['muted'])),
+                    ("TRUE PEAK", f"{self.loudness_proc.true_peak_db:.1f} dBTP" if self.loudness_proc.true_peak_db > -69.0 else "--- dBTP", QColor(235, 75, 65) if self.loudness_proc.true_peak_db > -0.5 else QColor(colors['accent'])),
                 ]
 
-                card_bg = QColor(15, 16, 20)
-                card_border = QColor(28, 30, 38)
+                card_bg = QColor(colors['card'])
+                card_border = QColor(colors['border'])
                 cols = 2
                 col_gap = 6.0
                 row_gap = 6.0
@@ -322,7 +305,7 @@ class LoudnessWidget(BaseMeterWidget):
                     painter.drawRoundedRect(QRectF(ix, iy, item_w, item_h), 4, 4)
 
                     painter.setFont(QFont("Segoe UI", 7, QFont.Weight.Bold))
-                    painter.setPen(QColor(115, 120, 135))
+                    painter.setPen(QColor(colors['muted']))
                     painter.drawText(QRectF(ix + 6, iy + 4, item_w - 12, 12), Qt.AlignmentFlag.AlignLeft, lbl)
 
                     painter.setFont(QFont("Segoe UI", 9, QFont.Weight.Bold))

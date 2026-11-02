@@ -1,7 +1,6 @@
 """
 Base Meter Widget built on PyQt6 QWidget with hardware double-buffering.
-Provides ultra-high performance 2D vector rendering, HiDPI typography,
-interactive help overlays, and undocking/docking controls with zero window-move lag.
+Provides 2D vector rendering, HiDPI typography and docking controls.
 """
 
 from PyQt6.QtCore import Qt, QTimer, pyqtSignal, QPointF
@@ -9,21 +8,19 @@ from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QToolButton, QFrame, QSizePolicy
 )
 from PyQt6.QtGui import QPainter, QColor, QFont, QPen, QBrush
-from .widgets.help_overlay import HelpOverlay
+from .theme import palette, apply_meter_header, popout_icon
 
 
 class BaseMeterWidget(QWidget):
     """
-    Core visualizer widget with high-performance paint pipeline,
-    help dialogs, and docking controls.
+    Core visualizer widget with paint pipeline and docking controls.
     """
     undock_requested = pyqtSignal()
     close_requested = pyqtSignal()
 
-    def __init__(self, title: str, help_lines: list[str], parent=None):
+    def __init__(self, title: str, parent=None):
         super().__init__(parent)
         self.meter_title = title
-        self.help_lines = help_lines
         self.is_paused = False
         self.is_standalone = False
         self.mouse_pos = QPointF(-1, -1)
@@ -35,12 +32,8 @@ class BaseMeterWidget(QWidget):
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self.setMinimumSize(200, 160)
 
-        # Header Buttons (Help, Undock)
+        # Header and pop-out control
         self._init_header_controls()
-
-        # Help overlay
-        self.help_overlay = HelpOverlay(self.meter_title, self.help_lines, self)
-        self.help_overlay.hide()
 
         # Render loop timer (used only when undocked in standalone floating window)
         self.timer = QTimer(self)
@@ -79,18 +72,10 @@ class BaseMeterWidget(QWidget):
         h_layout.addWidget(self.title_lbl)
         h_layout.addStretch(1)
 
-        # Help Button
-        self.help_btn = QToolButton(self.header_frame)
-        self.help_btn.setText("?")
-        self.help_btn.setToolTip("Show meter explanations")
-        self.help_btn.setFixedSize(18, 18)
-        self.help_btn.clicked.connect(self._toggle_help)
-        h_layout.addWidget(self.help_btn)
-
-        # Undock / Pop-out Button
+        # Pop-out button
         self.undock_btn = QToolButton(self.header_frame)
-        self.undock_btn.setText("↗")
-        self.undock_btn.setToolTip("Pop-out into floating window")
+        self.undock_btn.setIcon(popout_icon("#91c5ff"))
+        self.undock_btn.setToolTip("Move to a separate window")
         self.undock_btn.setFixedSize(18, 18)
         self.undock_btn.clicked.connect(self.undock_requested.emit)
         h_layout.addWidget(self.undock_btn)
@@ -98,25 +83,21 @@ class BaseMeterWidget(QWidget):
     def set_fps(self, fps: int):
         interval_ms = max(5, int(1000.0 / max(1, fps)))
         self.timer.setInterval(interval_ms)
+
+    def apply_theme(self, colors: dict[str, str]):
+        apply_meter_header(self, colors)
         if self.is_standalone and not self.timer.isActive():
             self.timer.start()
 
     def set_standalone_mode(self, is_standalone: bool):
         self.is_standalone = is_standalone
-        self.undock_btn.setVisible(not is_standalone)
+        self.header_frame.setVisible(not is_standalone)
+        self.update()
         if is_standalone:
             if not self.timer.isActive():
                 self.timer.start()
         else:
             self.timer.stop()
-
-    def _toggle_help(self):
-        if self.help_overlay.isVisible():
-            self.help_overlay.hide()
-        else:
-            self.help_overlay.setGeometry(self.rect())
-            self.help_overlay.show()
-            self.help_overlay.raise_()
 
     def _on_render_tick(self):
         if not self.is_paused and self.isVisible():
@@ -125,8 +106,6 @@ class BaseMeterWidget(QWidget):
     def resizeEvent(self, event):
         super().resizeEvent(event)
         self.header_frame.setGeometry(0, 0, self.width(), 26)
-        if self.help_overlay.isVisible():
-            self.help_overlay.setGeometry(self.rect())
 
     def mouseMoveEvent(self, event):
         self.mouse_pos = event.position()
@@ -144,7 +123,7 @@ class BaseMeterWidget(QWidget):
 
     def paintEvent(self, event):
         painter = QPainter(self)
-        painter.fillRect(self.rect(), QColor(11, 11, 13))
+        painter.fillRect(self.rect(), QColor(palette(self.config)["root"]))
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         painter.setRenderHint(QPainter.RenderHint.TextAntialiasing)
         try:

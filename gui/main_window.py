@@ -27,6 +27,7 @@ from core.config_manager import AppConfig, save_config
 from core.audio_worker import AudioWorker
 from core.version import __version__
 from core.updater import UpdateCheckWorker
+from .theme import palette
 
 
 class MainWindow(FramelessWindow):
@@ -34,7 +35,7 @@ class MainWindow(FramelessWindow):
         super().__init__(parent)
         self.config = config
         self.audio_worker = audio_worker
-        self.setWindowTitle("AUDIO VISUALIZER")
+        self.setWindowTitle("Audio Visualizer")
 
         self.modules = {}
         self.dock_cards = {}
@@ -42,7 +43,7 @@ class MainWindow(FramelessWindow):
         self._is_suite_paused = False
 
         # 1. Custom Titlebar
-        self.title_bar = TitleBar(self, title="AUDIO VISUALIZER", is_floating=False, is_main=True)
+        self.title_bar = TitleBar(self, title="Audio Visualizer", is_floating=False, is_main=True)
         self.title_bar.pin_toggled.connect(self.set_always_on_top)
         self.title_bar.settings_clicked.connect(self._open_settings)
         self.title_bar.module_toggled.connect(self._toggle_module)
@@ -62,6 +63,7 @@ class MainWindow(FramelessWindow):
         # 4. Apply initial layout and active states
         self._rebuild_layout()
         self._apply_initial_state()
+        self._apply_theme()
 
         # 5. Master Render Timer (synchronizes all docked modules with 0% drag lag)
         self.master_timer = QTimer(self)
@@ -84,12 +86,12 @@ class MainWindow(FramelessWindow):
 
         # Instantiate visualizer widgets
         self.modules = {
-            "loudness": LoudnessWidget(self.audio_worker),
-            "waveform": WaveformWidget(self.audio_worker),
-            "oscilloscope": OscilloscopeWidget(self.audio_worker),
-            "spectrum": SpectrumWidget(self.audio_worker),
-            "spectrogram": SpectrogramWidget(self.audio_worker),
-            "vectorscope": VectorscopeWidget(self.audio_worker),
+            "loudness": LoudnessWidget(self.audio_worker, config=self.config),
+            "waveform": WaveformWidget(self.audio_worker, config=self.config),
+            "oscilloscope": OscilloscopeWidget(self.audio_worker, config=self.config),
+            "spectrum": SpectrumWidget(self.audio_worker, config=self.config),
+            "spectrogram": SpectrogramWidget(self.audio_worker, config=self.config),
+            "vectorscope": VectorscopeWidget(self.audio_worker, config=self.config),
         }
 
         # Wrap in DockCards and connect undock requests
@@ -237,6 +239,7 @@ class MainWindow(FramelessWindow):
         }
 
         float_win = FloatingModuleWindow(module_id, title=title_map.get(module_id, module_id.capitalize()))
+        float_win.apply_theme(palette(self.config))
         float_win.attach_widget(widget)
         float_win.redock_requested.connect(self._redock_module)
 
@@ -308,11 +311,25 @@ class MainWindow(FramelessWindow):
 
     def _on_config_updated(self, new_config: AppConfig):
         self.config = new_config
+        for widget in self.modules.values():
+            widget.config = new_config
+        self._apply_theme()
         self.setWindowOpacity(self.config.window_opacity)
         self.master_timer.setInterval(max(5, int(1000.0 / max(1, self.config.fps_limit))))
         for w in self.modules.values():
             w.set_fps(self.config.fps_limit)
         self.update()
+
+    def _apply_theme(self):
+        colors = palette(self.config)
+        self.setStyleSheet(f"background-color: {colors['root']}; color: {colors['text']};")
+        self.title_bar.apply_theme(colors)
+        for widget in self.modules.values():
+            widget.apply_theme(colors)
+        for card in self.dock_cards.values():
+            card.apply_theme(colors)
+        for window in self.floating_windows.values():
+            window.apply_theme(colors)
 
     def _check_updates_silent(self):
         self._startup_update_worker = UpdateCheckWorker(current_version=__version__, parent=self)

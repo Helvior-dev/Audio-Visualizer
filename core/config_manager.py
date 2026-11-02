@@ -67,7 +67,8 @@ class AppConfig:
     })
     
     # Theme & Visual Customization
-    accent_color: str = "#58A6FF"  # Hex color for UI highlights and meter accents
+    theme: str = "blue"
+    accent_color: str = "#91c5ff"  # Custom accent when theme is "custom"
     
     # Module-specific DSP and visualization tuning
     spectrum_smoothing: float = 0.65
@@ -102,6 +103,13 @@ def load_config() -> AppConfig:
             for key, value in data.items():
                 if hasattr(config, key):
                     setattr(config, key, value)
+            if "theme" not in data:
+                if str(data.get("accent_color", "#58A6FF")).upper() != "#58A6FF":
+                    config.theme = "custom"  # Preserve earlier user-selected accent colors.
+                else:
+                    config.accent_color = "#91c5ff"
+            if config.theme not in ("green", "blue", "pink", "red", "amber", "cyan", "violet", "custom"):
+                config.theme = "blue"
             return config
     except Exception:
         return AppConfig()
