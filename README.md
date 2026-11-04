@@ -1,4 +1,4 @@
-# Audio Visualizer (v2.2.0)
+# Audio Visualizer (v2.2.1)
 
 Audio visualizer for Windows. Captures system output through WASAPI loopback or a microphone and displays six visualizations. The default frame rate is 144 FPS.
 
@@ -28,7 +28,7 @@ Six modules are arranged in a 2x3 grid:
 
 ## Shortcuts
 
-- `R`: Reset Loudness Meter statistics (integrated LUFS, LRA and True Peak).
+- `R`: Reset Loudness Meter statistics (integrated LUFS, LRA and True Peak). Works with English and Russian keyboard layouts on Windows.
 
 ## Setup & Running
 
@@ -57,7 +57,7 @@ To build a standalone single-folder distribution using PyInstaller:
 ```bash
 python build_executable.py
 ```
-Output will be placed in `dist/AudioVisualizer/AudioVisualizer.exe`.
+Output will be placed in `dist/Audio-Visualizer/Audio-Visualizer.exe`.
 
 ## Repository Structure
 

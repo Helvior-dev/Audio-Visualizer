@@ -297,7 +297,8 @@ class MainWindow(FramelessWindow):
         save_config(self.config)
 
     def keyPressEvent(self, event):
-        if event.key() == Qt.Key.Key_R:
+        # Windows scan code 0x13 is the physical R key, also under Cyrillic layouts.
+        if event.key() == Qt.Key.Key_R or event.nativeScanCode() == 0x13:
             if "loudness" in self.modules:
                 self.modules["loudness"].reset_stats()
             self.update()

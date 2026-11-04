@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.2.1
+
+### Fixed
+- The `R` shortcut now resets integrated LUFS, LRA and True Peak without crashing. The physical key also works with a Russian keyboard layout on Windows.
+
+### Changed
+- The Windows build folder and executable are now named `Audio-Visualizer`.
+
 ## 2.2.0
 
 ### Added

@@ -8,9 +8,9 @@ from unittest.mock import Mock, patch
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 import numpy as np
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, QEvent
 from PyQt6.QtWidgets import QApplication
-from PyQt6.QtGui import QPainter, QPixmap, QPolygonF
+from PyQt6.QtGui import QKeyEvent, QPainter, QPixmap, QPolygonF
 
 from core.config_manager import AppConfig
 from gui.main_window import MainWindow
@@ -32,6 +32,41 @@ class ConfigRenderTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.app = QApplication.instance() or QApplication([])
+
+    def test_reset_shortcut_works_with_latin_and_cyrillic_layouts(self):
+        worker = Mock()
+        worker.create_reader.return_value.read_chunk.return_value = None
+        with patch("gui.main_window.save_config"), patch.object(MainWindow, "_check_updates_silent"):
+            window = MainWindow(AppConfig(), worker)
+            try:
+                processor = window.modules["loudness"].loudness_proc
+                for key, scan_code, text in (
+                    (Qt.Key.Key_R, 0, "r"),
+                    (ord("К"), 0x13, "к"),
+                ):
+                    processor._integrated_blocks.append(0.5)
+                    processor._st_history.append(-20.0)
+                    processor.integrated_lufs = -20.0
+                    processor.lra = 4.0
+                    processor.true_peak_db = -3.0
+                    processor._true_peak_meter.peak = 0.7
+                    event = QKeyEvent(QEvent.Type.KeyPress, key, Qt.KeyboardModifier.NoModifier,
+                                      scan_code, 0, 0, text)
+                    self.app.sendEvent(window, event)
+                    self.assertEqual(processor._integrated_blocks, [])
+                    self.assertEqual(processor._st_history, [])
+                    self.assertEqual(processor.integrated_lufs, processor.ABS_GATE_LUFS)
+                    self.assertEqual(processor.lra, 0.0)
+                    self.assertEqual(processor.true_peak_db, processor.ABS_GATE_LUFS)
+                    self.assertEqual(processor._true_peak_meter.peak, 0.0)
+
+                processor.integrated_lufs = -20.0
+                other_key = QKeyEvent(QEvent.Type.KeyPress, ord("К"), Qt.KeyboardModifier.NoModifier,
+                                      0x25, 0, 0, "к")
+                self.app.sendEvent(window, other_key)
+                self.assertEqual(processor.integrated_lufs, -20.0)
+            finally:
+                window.close()
 
     def test_all_modules_use_shared_config_and_receive_replacement(self):
         config = AppConfig(theme="custom", accent_color="#FF4570")

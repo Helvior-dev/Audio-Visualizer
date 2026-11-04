@@ -77,6 +77,10 @@ class LoudnessWidget(BaseMeterWidget):
         self.loudness_peak_hold = DB_MIN_METER
         self.mode_toast_time = 0.0
 
+    def reset_stats(self):
+        self.loudness_proc.reset_integrated()
+        self.update()
+
     def mousePressEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton:
             self.mode_index = (self.mode_index + 1) % len(MODES)

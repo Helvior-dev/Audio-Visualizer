@@ -14,6 +14,7 @@ BASE_DIR = Path(__file__).resolve().parent
 ASSETS_DIR = BASE_DIR / "assets"
 ICON_ICO = ASSETS_DIR / "icon.ico"
 ICON_PNG = ASSETS_DIR / "icon.png"
+APP_NAME = "Audio-Visualizer"
 
 def build():
     print("==================================================")
@@ -31,7 +32,7 @@ def build():
         "--clean",
         "--windowed", # No black console window
         f"--icon={str(ICON_ICO)}",
-        "--name=AudioVisualizer",
+        f"--name={APP_NAME}",
         f"--add-data={str(ASSETS_DIR)}{os.pathsep}assets",
         "--hidden-import=PyQt6.QtOpenGLWidgets",
         "--hidden-import=pyaudiowpatch",
@@ -46,7 +47,7 @@ def build():
     if res.returncode == 0:
         print("\n==================================================")
         print("BUILD SUCCESSFUL!")
-        print(f"Executable is located at: {BASE_DIR / 'dist' / 'AudioVisualizer' / 'AudioVisualizer.exe'}")
+        print(f"Executable is located at: {BASE_DIR / 'dist' / APP_NAME / (APP_NAME + '.exe')}")
         print("==================================================")
     else:
         print("\nBUILD FAILED with error code:", res.returncode)
