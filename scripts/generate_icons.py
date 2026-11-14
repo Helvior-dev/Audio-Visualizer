@@ -1,6 +1,7 @@
 """
 Icon Generator for Audio Visualizer.
-Transforms raw high-res artwork into a modern, pixel-perfect Squircle icon:
+Rebuilds the ICO from the checked-in PNG, preserving its tile and emblem.
+If the PNG is absent, transforms raw high-res artwork into a Squircle icon:
 - Clean transparent margins (no black corners on desktop)
 - Soft ambient drop shadow for depth on any wallpaper
 - 7-layer .ico container (16, 24, 32, 48, 64, 128, 256) via Lanczos supersampling
@@ -121,6 +122,13 @@ def generate_squircle_master(src_path: Path, canvas_size: int = 1024) -> Image.I
 
 
 def build_icons():
+    # The checked-in PNG is the canonical artwork; keep its styling when rebuilding the ICO.
+    if OUTPUT_PNG.exists():
+        master = Image.open(OUTPUT_PNG).convert("RGBA")
+        master.save(OUTPUT_ICO, format="ICO", sizes=TARGET_SIZES)
+        print(f"[OK] Rebuilt ICO from {OUTPUT_PNG}")
+        return
+
     master = generate_squircle_master(SOURCE_IMAGE, canvas_size=1024)
 
     # Save 256x256 PNG
